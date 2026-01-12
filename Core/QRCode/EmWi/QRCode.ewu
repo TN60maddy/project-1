@@ -1,0 +1,412 @@
+$version 9.30
+
+// Include the native sources which are used by the QRCode component.
+$rect <20,80,240,120>
+inline Inline
+{
+  $if !$prototyper && ( $platform != *.WebGL.* )
+  #include "QRCodeBinding.h"
+  $endif
+}
+
+// Widget
+note group Note6
+{
+  attr Bounds = <0,0,270,150>;
+}
+
+// The QRCode component.
+$rect <20,40,240,80>
+$output false
+class QRCode : Core::Group
+{
+  $rect <0,220,200,260>
+  inherited property Bounds = <0,0,200,200>;
+
+  // The method drawContent() gets invoked to draw the cubes of the qr code.
+  $rect <231,169,431,209>
+  inherited method drawContent()
+  {
+    super( aCanvas, aClip, aOffset, aOpacity, aBlend );
+
+    // Definition of local variables
+    var int32 borderLength = 0;
+    var int32 width = getSize();
+    var int32 x = 0;
+    var int32 y = 0;
+    var rect destRect = Bounds;
+    var point padding = <0,0>;
+    var color c = pure CodeColor;
+
+    // Check if qr code can be drawn within the bounds
+    if ( (width > Bounds.w) || (width > Bounds.h) )
+      return;
+
+    // The alpha blending of the line depends on the blending mode of its owners
+    aBlend   = aBlend && viewState.contains( Core::ViewState[ AlphaBlended ]);
+    aOpacity = aOpacity + 1;
+
+    // Modulate the line colors by its owner's opacity
+    if ( aOpacity < 256 )
+      c.alpha = uint8(( aOpacity * c.alpha ) >> 8 );
+
+    // Scale the qr code to the minimal border length
+    if ( width > 0 )
+    {
+      if ( Bounds.w > Bounds.h )
+        borderLength = Bounds.h / width;
+      else
+        borderLength = Bounds.w / width;
+      
+      padding.x = (Bounds.w - borderLength * width) / 2;
+      padding.y = (Bounds.h - borderLength * width) / 2;
+    }  
+
+    // Draw all qr code cubes
+    for( y=0; y<width; y=y+1 )
+    {
+      for( x=0; x<width; x=x+1 )
+      {
+        // If true draw the cube with the CodeColor
+        if ( getData( x, y ) )
+        {
+          // Determine the destination rectangle of the cube
+          destRect = rect( x * borderLength, y * borderLength, (x + 1) * borderLength, (y + 1) * borderLength );
+        
+          // Add the position of this group inside his parent
+          destRect = destRect + aOffset + padding;
+
+          aCanvas.FillRectangle( aClip, destRect, c, c, c, c, aBlend );
+        }
+      }
+    }
+  }
+
+  $rect <460,390,660,430>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+    postsignal validate;
+  }
+
+  $rect <230,89,430,129>
+  inherited method Init()
+  {
+    // Create a native handle
+    qrHandle = createQRCode();
+
+    // Do the encoding once to initialise the buffers with the default text.
+    // This is needed before other functions like getSize are called from 
+    // the Draw method.
+    signal encodeTextSlot;
+  }
+
+  // The method getData() gets called to obtain whether a cube at a given position \
+  // should be drawn or not.
+  $rect <459,249,659,289>
+  method bool getData( arg int32 aXPos, arg int32 aYPos )
+  {
+    var bool result = false;
+    var int32 x = aXPos;
+    var int32 y = aYPos;
+    var handle qr = qrHandle;
+
+    $if $prototyper
+      result = QRCodeBindingGetModule( qr, x, y );
+    $elseif ( $platform != *.WebGL.* )
+      native( result, x, y, qr )
+      {
+        result = QRCodeBindingGetModule( qr, x, y );
+      }
+    $elseif ( $platform == *.WebGL.* )
+      native( result, x, y, qr )
+      {
+        result = qr.getModule(x, y);
+      }
+    $else
+      result = (x+y) % 2 == 0;
+      qr;
+    $endif
+
+    return result;
+  }
+
+  // The property 'Text' determines the text string which should be encoded and displayed \
+  // at the qr code component.
+  $rect <30,349,230,389>
+  property string Text = "Hello, World!";
+
+  $rect <229,349,429,389>
+  onset Text
+  {
+    // The value doesn't change - nothing to do.
+    if ( pure Text == value )
+      return;
+
+    // Remember the property's new value.
+    pure Text = value;
+
+    postsignal encodeTextSlot;
+  }
+
+  // The variable 'qrHandle' holds a native handle.
+  $rect <460,290,660,330>
+  var handle qrHandle = null;
+
+  // The method getSize() gets called to obtain the needed border width in number \
+  // of cubes to display the previous encoded 'Text'.
+  $rect <459,209,659,249>
+  method int32 getSize()
+  {
+    var handle qr = qrHandle;
+    var int32 size = 0;
+
+    $if $prototyper
+      size = QRCodeBindingGetSize( qr );
+    $elseif ( $platform != *.WebGL.* )
+      native( qr, size )
+      {
+        size = QRCodeBindingGetSize( qr );
+      }
+    $elseif ( $platform == *.WebGL.* )
+      native( qr, size )
+      {
+        size = qr.size;
+      }
+    $else
+      size = 20;
+      qr;
+    $endif
+
+    return size;
+  }
+
+  // The method createQRCode() gets called once per instance of this qr code component \
+  // to create a native handle.
+  $rect <459,89,659,129>
+  method handle createQRCode()
+  {
+    var handle qr = null;
+
+    $if $prototyper
+      qr = QRCodeBindingCreate();
+    $elseif ( $platform != *.WebGL.* )
+      native( qr )
+      {
+        qr = QRCodeBindingCreate();
+      }
+    $elseif ( $platform == *.WebGL.* )
+      native( qr )
+      {
+        qr = qrcodegen.QrCode.encodeText( "", qrcodegen.QrCode.Ecc.MEDIUM );
+      }
+    $endif
+
+    return qr;
+  }
+
+  // The method encodeText() gets called to encode the text which should be display \
+  // at the qr code component.
+  $rect <459,169,659,209>
+  method bool encodeText( arg string aText, arg int32 aMinVersion, arg int32 aMaxVersion )
+  {
+    var bool success = false;
+    var handle qr = qrHandle;
+    var string text = aText;
+    var int32 minVersion = aMinVersion;
+    var int32 maxVersion = aMaxVersion;
+
+    if ( minVersion > maxVersion )
+    {
+      trace "Error: Minimum version has to be smaller or equal to maximum version!";
+      return false;
+    }
+
+    $if $prototyper
+      success = QRCodeBindingEncodeText( qr, text, minVersion, maxVersion );
+    $elseif ( $platform != *.WebGL.* )
+      native( success, qr, text, minVersion, maxVersion )
+      {
+        success = QRCodeBindingEncodeText( qr, text, minVersion, maxVersion );
+      }
+    $elseif ( $platform == *.WebGL.* )
+      native( qr, text, minVersion, maxVersion )
+      {
+        try {
+    		  var segs = qrcodegen.QrSegment.makeSegments( text );
+    		  qr = qrcodegen.QrCode.encodeSegments( segs, qrcodegen.QrCode.Ecc.MEDIUM, minVersion, maxVersion );
+          success = true;
+        } catch( err ) { success = false; }
+      }
+      qrHandle = qr;
+    $else
+      qr;
+      text;
+      minVersion;
+      maxVersion;
+    $endif
+
+    if ( !success )
+      trace "Error: Unable to encode the given Text!", text;
+
+    return success;
+  }
+
+  // Native
+  note group Note
+  {
+    attr Bounds = <449,49,670,340>;
+  }
+
+  // The method Done() is invoked automatically after the component has been destroyed \
+  // by the garbage-collector.
+  $rect <230,129,430,169>
+  method void Done()
+  {
+    // Cleanup the native handle
+    destroyQRCode();
+  }
+
+  // The method destroyQRCode() gets called once per instance of this qr code component \
+  // to destroy and free the native allocated memory.
+  $rect <459,129,659,169>
+  method void destroyQRCode()
+  {
+    var handle qr = qrHandle;
+
+    $if $prototyper
+      QRCodeBindingDestroy( qr );
+    $elseif ( $platform != *.WebGL.* )
+      native( qr )
+      {
+        QRCodeBindingDestroy( qr );
+      }
+    $else
+      qr;
+    $endif
+
+    qrHandle = null;
+  }
+
+  // API
+  note group Note1
+  {
+    attr Bounds = <20,269,440,518>;
+  }
+
+  // Lifecycle
+  note group Note2
+  {
+    attr Bounds = <220,49,440,258>;
+  }
+
+  // The property 'CodeColor' determines the color of the displayed colored cubes \
+  // inside the qr code. Not drawn cubes are transparent.
+  $rect <29,389,229,429>
+  property color CodeColor = #000000FF;
+
+  $rect <229,389,429,429>
+  onset CodeColor
+  {
+    // The value doesn't change - nothing to do.
+    if ( pure CodeColor == value )
+      return;
+
+    // Remember the property's new value.
+    pure CodeColor = value;
+
+    // Force a redraw
+    InvalidateArea( Bounds.orect );
+  }
+
+  // The property 'Version' determines the version of this qr code component. This \
+  // is a read only property!
+  $rect <29,309,229,349>
+  property string Version = "1.07.00";
+
+  $rect <229,309,429,349>
+  onset Version
+  {
+    trace "The property 'Version' is read only";
+  }
+
+  // The property 'MinVersion' determines the minimum number of displayed qr modules. \
+  // The number of modules gets calculated by 21 + 4 * (version - 1). The smallest \
+  // possible version is one and has to be smaller or equals to the MaxVersion.
+  $rect <29,429,229,469>
+  property int32 MinVersion = 1;
+
+  $rect <229,429,429,469>
+  onset MinVersion
+  {
+    // The value doesn't change - nothing to do.
+    if ( pure MinVersion == value )
+      return;
+
+    // Ensure that the minimum version is not smaller than one
+    if ( value < 1 )
+      value = 1;
+
+    // Remember the property's new value.
+    pure MinVersion = value;
+
+    postsignal encodeTextSlot;
+  }
+
+  // The property 'MaxVersion' determines the maximum number of displayed qr modules. \
+  // The number of modules gets calculated by 21 + 4 * (version - 1). The highest \
+  // possible version is 40 and has to be greater or equals to the MinVersion.
+  $rect <29,469,229,509>
+  property int32 MaxVersion = 40;
+
+  $rect <229,469,429,509>
+  onset MaxVersion
+  {
+    // The value doesn't change - nothing to do.
+    if ( pure MaxVersion == value )
+      return;
+
+    // Ensure that the maximum version is not bigger than 40
+    if ( value > 40 )
+      value = 40;
+
+    // Remember the property's new value.
+    pure MaxVersion = value;
+
+    postsignal encodeTextSlot;
+  }
+
+  $rect <229,209,429,249>
+  slot encodeTextSlot
+  {
+    // Encode the text
+    encodeText( Text, MinVersion, MaxVersion );
+
+    // validate the encoding
+    postsignal validate;
+
+    // and finally force a redraw
+    InvalidateArea( Bounds.orect );
+  }
+
+  // The slot validate() gets called to obtain whether the encoded QR code can be \
+  // displayed within the bounds of the QRCode view.
+  $rect <460,430,660,470>
+  slot validate
+  {
+    // Check if qr code can be drawn within the bounds
+    var int32 width = getSize();
+    if ( (width > Bounds.w) || (width > Bounds.h) )
+    {
+      trace "Error: Unable to draw the qr code within an area of <" + string( Bounds.size.x ) + "," + string( Bounds.size.y ) + "> pixel size!";
+      // Note: If you want to handle this programatically, overwrite this slot and add your code.
+    }
+  }
+
+  // Layout management
+  note group Note3
+  {
+    attr Bounds = <450,350,670,520>;
+  }
+}

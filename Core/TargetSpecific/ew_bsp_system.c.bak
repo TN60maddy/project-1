@@ -1,0 +1,323 @@
+/*******************************************************************************
+*
+* E M B E D D E D   W I Z A R D   P R O J E C T
+*
+*                                                Copyright (c) TARA Systems GmbH
+*                                    written by Paul Banach and Manfred Schweyer
+*
+********************************************************************************
+*
+* This software is delivered "as is" and shows the usage of other software
+* components. It is provided as an example software which is intended to be
+* modified and extended according to particular requirements.
+*
+* TARA Systems hereby disclaims all warranties and conditions with regard to the
+* software, including all implied warranties and conditions of merchantability
+* and non-infringement of any third party IPR or other rights which may result
+* from the use or the inability to use the software.
+*
+********************************************************************************
+*
+* DESCRIPTION:
+*   This file is part of the interface (glue layer) between an Embedded Wizard
+*   generated UI application and the board support package (BSP) of a dedicated
+*   target.
+*   Please note: The implementation of this module is partially based on
+*   examples that are provided within the STM32 cube firmware. In case you want
+*   to adapt this module to your custom specific hardware, please adapt the
+*   hardware initialization code according your needs or integrate the generated
+*   initialization code created by using the tool CubeMX.
+*   This template is responsible to configurate the entire system (CPU clock,
+*   memory, qspi, etc).
+*
+*******************************************************************************/
+
+#include "ewconfig.h"
+#include "stm32h7xx_hal.h"
+#include "stm32h743i_eval.h"
+#include "stm32h743i_eval_sdram.h"
+#include "stm32h743i_eval_qspi.h"
+
+#include "ew_bsp_system.h"
+
+
+/*******************************************************************************
+* FUNCTION:
+*   SystemClock_Config
+*
+* DESCRIPTION:
+*   System Clock Configuration
+*     The system Clock is configured as follow :
+*     System Clock source            = PLL (HSE)
+*     SYSCLK(Hz)                     = 400000000 (Domain1 frequency)
+*     HCLK(Hz)                       = 20000000  (Domain2 frequency)
+*     D1AHB Prescaler                = 1
+*     D1APB1 Prescaler               = 1
+*     D2APB1 Prescaler               = 1
+*     D2APB2 Prescaler               = 1
+*     HSE Frequency(Hz)              = 25000000
+*     PLL_M                          = 5
+*     PLL_N                          = 160
+*     PLL_P                          = 2
+*     PLL_Q                          = 4
+*     PLL_R                          = 2
+*     VDD(V)                         = 3.3
+*     Flash Latency(WS)              = 10
+*
+* ARGUMENTS:
+*   None
+*
+* RETURN VALUE:
+*   None
+*
+*******************************************************************************/
+static void SystemClock_Config( void )
+{
+  RCC_ClkInitTypeDef        RCC_ClkInitStruct;
+  RCC_OscInitTypeDef        RCC_OscInitStruct;
+  RCC_PeriphCLKInitTypeDef  PeriphClkInitStruct;
+
+  /*!< Supply configuration update enable */
+  MODIFY_REG(PWR->CR3, PWR_CR3_SCUEN, 0);
+
+  /* The voltage scaling allows optimizing the power consumption when the device is
+     clocked below the maximum system frequency, to update the voltage scaling value
+     regarding system frequency refer to product datasheet.  */
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  while ((PWR->D3CR & (PWR_D3CR_VOSRDY)) != PWR_D3CR_VOSRDY) {}
+
+  /* Enable HSE Oscillator and activate PLL with HSE as source */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState       = RCC_HSE_ON;
+  RCC_OscInitStruct.HSIState       = RCC_HSI_OFF;
+  RCC_OscInitStruct.CSIState       = RCC_CSI_OFF;
+  RCC_OscInitStruct.PLL.PLLState   = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource  = RCC_PLLSOURCE_HSE;
+
+  /* System clock @ 400MHZ */
+  RCC_OscInitStruct.PLL.PLLM = 5;
+  RCC_OscInitStruct.PLL.PLLN = 160;
+  RCC_OscInitStruct.PLL.PLLP = 2;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 4;
+
+  RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOWIDE;
+  RCC_OscInitStruct.PLL.PLLRGE    = RCC_PLL1VCIRANGE_2;
+
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
+
+  /* Select PLL as system clock source and configure  bus clocks
+     clocks dividers */
+  RCC_ClkInitStruct.ClockType = (RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_D1PCLK1 | RCC_CLOCKTYPE_PCLK1 | \
+                                 RCC_CLOCKTYPE_PCLK2  | RCC_CLOCKTYPE_D3PCLK1);
+
+  RCC_ClkInitStruct.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.SYSCLKDivider  = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider  = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV2;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV2;
+  RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV2;
+
+  HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4);
+
+  /* Activate CSI clock mondatory for I/O Compensation Cell */
+  __HAL_RCC_CSI_ENABLE() ;
+
+  /* Enable SYSCFG clock mondatory for I/O Compensation Cell */
+  __HAL_RCC_SYSCFG_CLK_ENABLE() ;
+
+  /* Enables the I/O Compensation Cell */
+  HAL_EnableCompensationCell();
+
+  /* The programmed LTDC pixel clock depends on the vertical refresh rate of the panel 60Hz => 25.16MHz and
+     the LCD/SDRAM bandwidth affected by the several access on the bus and the number of used layers.
+  */
+
+  /* In case of single layer the bandwidth is arround 160MBytesPerSec ==> theorical PCLK of 40MHz */
+  /* AMPIRE640480 typical PCLK is 25 MHz so the PLL3R is configured to provide this clock */
+  /* AMPIRE640480 LCD clock configuration */
+  /* PLL3_VCO Input = HSE_VALUE/PLL3M = 5 Mhz */
+  /* PLL3_VCO Output = PLL3_VCO Input * PLL3N = 800 Mhz */
+  /* PLLLCDCLK = PLL3_VCO Output/PLL3R = 800/32 = 25Mhz */
+  /* LTDC clock frequency = PLLLCDCLK = 25 Mhz */
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_LTDC;
+  PeriphClkInitStruct.PLL3.PLL3M = 5;
+  PeriphClkInitStruct.PLL3.PLL3N = 160;
+  PeriphClkInitStruct.PLL3.PLL3P = 2;
+  PeriphClkInitStruct.PLL3.PLL3Q = 2;
+  PeriphClkInitStruct.PLL3.PLL3R = 32;
+  HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct);
+
+  /* Don't remove this mandatory system configuration */
+  *(__IO uint32_t*) (0x51046108 ) = 0x1;
+}
+
+
+/*******************************************************************************
+* FUNCTION:
+*   MPU_Config
+*
+* DESCRIPTION:
+*   Configure the MPU attributes as Write Through for SRAM1/2.
+*
+* ARGUMENTS:
+*   None
+*
+* RETURN VALUE:
+*   None
+*
+*******************************************************************************/
+static void MPU_Config( void )
+{
+  MPU_Region_InitTypeDef MPU_InitStruct;
+
+  /* Disable the MPU */
+  HAL_MPU_Disable();
+
+  /* Configure the MPU as strongly ordered for not defined regions - this setting
+     is essential to avoid speculative accesses in undefined address areas */
+  MPU_InitStruct.Enable           = MPU_REGION_ENABLE;
+  MPU_InitStruct.Number           = MPU_REGION_NUMBER0;
+  MPU_InitStruct.BaseAddress      = 0x00;
+  MPU_InitStruct.Size             = MPU_REGION_SIZE_4GB;
+  MPU_InitStruct.SubRegionDisable = 0x87;
+  MPU_InitStruct.AccessPermission = MPU_REGION_NO_ACCESS;
+  MPU_InitStruct.DisableExec      = MPU_INSTRUCTION_ACCESS_DISABLE;
+  MPU_InitStruct.IsBufferable     = MPU_ACCESS_NOT_BUFFERABLE;
+  MPU_InitStruct.IsCacheable      = MPU_ACCESS_NOT_CACHEABLE;
+  MPU_InitStruct.IsShareable      = MPU_ACCESS_SHAREABLE;
+  MPU_InitStruct.TypeExtField     = MPU_TEX_LEVEL0;
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /* Configure the MPU attributes as WT for SRAM */
+  MPU_InitStruct.Enable           = MPU_REGION_ENABLE;
+  MPU_InitStruct.Number           = MPU_REGION_NUMBER1;
+  MPU_InitStruct.BaseAddress      = 0x24000000;
+  MPU_InitStruct.Size             = MPU_REGION_SIZE_512KB;
+  MPU_InitStruct.SubRegionDisable = 0x00;
+  MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+  MPU_InitStruct.DisableExec      = MPU_INSTRUCTION_ACCESS_DISABLE;
+  MPU_InitStruct.IsBufferable     = MPU_ACCESS_NOT_BUFFERABLE;
+  MPU_InitStruct.IsCacheable      = MPU_ACCESS_CACHEABLE;
+  MPU_InitStruct.IsShareable      = MPU_ACCESS_NOT_SHAREABLE;
+  MPU_InitStruct.TypeExtField     = MPU_TEX_LEVEL0;
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /* Configure the MPU attributes for the QSPI 128MB to normal memory Cacheable, must reflect the real memory size */
+  MPU_InitStruct.Enable           = MPU_REGION_ENABLE;
+  MPU_InitStruct.Number           = MPU_REGION_NUMBER2;
+  MPU_InitStruct.BaseAddress      = 0x90000000;
+  MPU_InitStruct.Size             = MPU_REGION_SIZE_128MB;
+  MPU_InitStruct.SubRegionDisable = 0x0;
+  MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+  MPU_InitStruct.DisableExec      = MPU_INSTRUCTION_ACCESS_DISABLE;
+  MPU_InitStruct.IsBufferable     = MPU_ACCESS_NOT_BUFFERABLE;
+  MPU_InitStruct.IsCacheable      = MPU_ACCESS_CACHEABLE;
+  MPU_InitStruct.IsShareable      = MPU_ACCESS_NOT_SHAREABLE;
+  MPU_InitStruct.TypeExtField     = MPU_TEX_LEVEL0;
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /* Configure the MPU attributes for SDRAM 32MB to normal memory Cacheable */
+  MPU_InitStruct.Enable           = MPU_REGION_ENABLE;
+  MPU_InitStruct.Number           = MPU_REGION_NUMBER3;
+  MPU_InitStruct.BaseAddress      = 0xD0000000;
+  MPU_InitStruct.Size             = MPU_REGION_SIZE_32MB;
+  MPU_InitStruct.SubRegionDisable = 0x0;
+  MPU_InitStruct.AccessPermission = MPU_REGION_FULL_ACCESS;
+  MPU_InitStruct.DisableExec      = MPU_INSTRUCTION_ACCESS_DISABLE;
+  MPU_InitStruct.IsBufferable     = MPU_ACCESS_NOT_BUFFERABLE;
+  MPU_InitStruct.IsCacheable      = MPU_ACCESS_CACHEABLE;
+  MPU_InitStruct.IsShareable      = MPU_ACCESS_NOT_SHAREABLE;
+  MPU_InitStruct.TypeExtField     = MPU_TEX_LEVEL0;
+  HAL_MPU_ConfigRegion(&MPU_InitStruct);
+
+  /* Enable the MPU */
+  HAL_MPU_Enable(MPU_PRIVILEGED_DEFAULT);
+}
+
+
+/*******************************************************************************
+* FUNCTION:
+*   EwBspSystemInit
+*
+* DESCRIPTION:
+*   The function EwBspSystemInit initializes the system components.
+*   (CPU clock, memory, qspi, ...)
+*
+* ARGUMENTS:
+*   None
+*
+* RETURN VALUE:
+*   None
+*
+*******************************************************************************/
+#ifdef __ICCARM__
+/* in case of higest optimisation level of the IAR tool chain (V7.80) with
+   enabled optimisation flag 'Loop unroling'  the inline function call
+   SCB_EnableDCache() fails which leads to a hard fault after some executin
+   time.
+   As a workaround the unroling loops optimisation is disabled for the
+   following function */
+#pragma optimize=no_unroll
+#endif
+void EwBspSystemInit( void )
+{
+  MPU_Config();
+
+  /* Enable I-Cache */
+  SCB_EnableICache();
+
+  /* Enable D-Cache */
+  SCB_EnableDCache();
+
+  HAL_Init();
+
+  SystemClock_Config();
+
+  BSP_SDRAM_Init( 0 );
+
+  /* Disable FMC bank1 (0x6000 0000 - 0x6FFF FFFF), since it is not used.
+     This setting avoids unneeded speculative access to the first FMC bank.
+     See also STM Application Note AN4861 */
+  __HAL_RCC_FMC_CLK_ENABLE();
+  FMC_NORSRAM_DEVICE->BTCR[0]&=~0x1;
+
+
+#if EW_USE_EXTERNAL_FLASH == 1
+
+  BSP_QSPI_Init_t init ;
+  init.InterfaceMode = MT25TL01G_QPI_MODE;
+  init.TransferRate  = MT25TL01G_DTR_TRANSFER ;
+  init.DualFlashMode = MT25TL01G_DUALFLASH_ENABLE;
+
+  BSP_QSPI_Init( 0,&init );
+  BSP_QSPI_EnableMemoryMappedMode( 0 );
+
+  /* configure QSPI: LPTR register with the low-power time out value */
+  WRITE_REG( QUADSPI->LPTR, 0xFFF );
+
+#endif
+}
+
+
+/*******************************************************************************
+* FUNCTION:
+*   EwBspSystemDone
+*
+* DESCRIPTION:
+*   The function EwBspSystemDone terminates the system components.
+*
+* ARGUMENTS:
+*   None
+*
+* RETURN VALUE:
+*   None
+*
+*******************************************************************************/
+void EwBspSystemDone( void )
+{
+}
+
+/* msy */

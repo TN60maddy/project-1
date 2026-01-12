@@ -1,0 +1,435 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2024 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "string.h"
+#include "cmsis_os.h"
+#include "stdio.h"
+#include "ewmain.h"
+#include "ewrte.h"
+#include "ew_bsp_system.h"
+#include "ew_bsp_console.h"
+#include "ew_bsp_os.h"
+#include "InfDevice.h"
+#include "../../BSP/Components/tsc2007/tsc2007.h"
+#include "../../BSP/STM32H743I-EVAL/stm32h743i_eval_lcd.h"
+#include "mb.h"
+
+#include "stm32h7xx_hal.h"     // HAL header for STM32H7 series
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "timers.h"
+#include "HwDoorPositionSensor.h"
+#include "HwStepperCtrl.h"
+#include "KeyListner.h"
+#include "DoorHandler.h"
+#include "Modbus.h"
+#include "TestProcess.h"
+#include "usb_device.h"
+#include "BattMonitoring.h"
+
+
+/* --- External Hardware API declarations --- */
+/* These functions and types are assumed to be defined in your hardware libraries. */
+
+
+extern  void LCD_Init( void );
+extern void TSC2007_GPIO_Init();
+
+/** @def MODBUS_TASK_STACK_SIZE
+  * @brief Stack size for the Modbus task.
+  */
+#define MODBUS_TASK_STACK_SIZE       512U
+/** @def TESTPROCESS_TASK_STACK_SIZE
+  * @brief Stack size for the TestProcess task.
+  */
+#define TESTPROCESS_TASK_STACK_SIZE  512U
+/** @def MODBUS_TASK_PRIORITY
+  * @brief Priority for the Modbus task.
+  */
+#define MODBUS_TASK_PRIORITY         (tskIDLE_PRIORITY + 2U)
+/** @def TESTPROCESS_TASK_PRIORITY
+  * @brief Priority for the TestProcess task.
+  */
+#define TESTPROCESS_TASK_PRIORITY    (tskIDLE_PRIORITY + 1U)
+
+
+
+/* --- Message IDs for the timers --- */
+#define DOOR_TIMER_MSG      1
+#define TEN_SEC_TIMER_MSG   2
+
+/* --- Global FreeRTOS objects --- */
+static QueueHandle_t xDoorQueue = NULL;
+static void MX_GPIO_Init(void);
+
+
+
+/* Private includes ----------------------------------------------------------*/
+
+
+/* Private typedef -----------------------------------------------------------*/
+
+/* Private define ------------------------------------------------------------*/
+
+/* Private macro -------------------------------------------------------------*/
+
+
+static void GuiThread( const void* arg );
+static void DoorSensorTest(void);
+
+static void vDoorMonitoringTask(void *pvParameters);
+
+
+/* Private function prototypes -----------------------------------------------*/
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+
+	EwBspSystemInit();
+
+
+	  /* initialize console interface for debug messages */
+    EwBspConsoleInit();
+
+  MX_GPIO_Init();
+
+  MX_USB_DEVICE_Init();
+  HAL_Delay(2000);
+//	BattMonitoring_Init( );
+   EwBspOsThreadCreate( GuiThread, EW_BSP_OS_THREAD_PRIORITY_NORMAL, EW_GUI_THREAD_STACK_SIZE, 0 );
+
+/* Initialize DoorHandle module */
+   DoorHandlerInit();
+
+   /* Initialize KeyListner module */
+   KeyListnerInit();
+
+  Modbus_Init();
+
+  xTaskCreate(Modbus_Task, "ModbusTask", MODBUS_TASK_STACK_SIZE, NULL, MODBUS_TASK_PRIORITY, NULL);
+  xTaskCreate(TestProcess_Task, "TestProcTask", TESTPROCESS_TASK_STACK_SIZE, NULL, TESTPROCESS_TASK_PRIORITY, NULL);
+
+
+  /* ...and start scheduler */
+   EwBspOsStartScheduler();
+
+  /* restore console */
+  EwBspConsoleDone();
+
+  /* terminate the system */
+  EwBspSystemDone();
+
+
+
+  while (1)
+  {
+  }
+
+}
+
+
+
+/**
+  * @brief  Initializes the GPIO pins.
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOH_CLK_ENABLE();
+}
+
+
+void Error_Handler(void)
+{
+
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
+
+}
+/*******************************************************************************
+* FUNCTION:
+*   GuiThread
+*
+* DESCRIPTION:
+*   The EwThread processes the Embeded Wizard application.
+*
+* ARGUMENTS:
+*   arg - not used.
+*
+* RETURN VALUE:
+*   None.
+*
+*******************************************************************************/
+static void GuiThread( const void* arg )
+{
+  unsigned int stack;
+
+  /* determine the stack area and provide it to the Runtime Environmnet */
+  EwSetStackAddressArea( &stack, (void*)((unsigned int)&stack - EW_GUI_THREAD_STACK_SIZE ));
+
+  /* initialize Embedded Wizard application */
+  LCD_Init( );
+  LCD_BKLIGHTCTRL_INIT();
+  TSC2007_GPIO_Init();
+  if ( EwInit() == 0 )
+    return;
+
+  EwPrintSystemInfo();
+
+  /* process the Embedded Wizard main loop */
+  while( EwProcess());
+
+  /* de-initialize Embedded Wizard application */
+  EwDone();
+
+
+
+}
+/* main.c - STM32H753 example using FreeRTOS with two timers */
+
+
+
+
+
+/* --- Timer Callback Functions ---
+
+   1. vDoorTimerCallback() is called every 200 ms.
+      It sends DOOR_TIMER_MSG to the door-monitoring task.
+
+   2. vTenSecTimerCallback() is called every 10 sec.
+      It sends TEN_SEC_TIMER_MSG to the same task.
+*/
+static void vDoorTimerCallback(TimerHandle_t xTimer)
+{
+    uint32_t msg = DOOR_TIMER_MSG;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    /* Send the message using the ISR safe API */
+    xQueueSendFromISR(xDoorQueue, &msg, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+static void vTenSecTimerCallback(TimerHandle_t xTimer)
+{
+    uint32_t msg = TEN_SEC_TIMER_MSG;
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    /* Send the 10-sec timer message */
+    xQueueSendFromISR(xDoorQueue, &msg, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+/* --- Door Monitoring Task ---
+ * At startup the task calls the hardware initialization functions.
+ * Then it waits on a queue for messages. Based on which message is received:
+ *
+ * For the DOOR_TIMER_MSG (every 200 ms):
+ *   - Read the door sensor status.
+ *   - If the door status is > 4000, call HwStepperCtrlStop( HW_STEPPER_NUM_1 ).
+ *   - If the door status is < 2000, call HwStepperCtrlStop( HW_STEPPER_NUM_1 ).
+ *   - If the door status is between 2000 and 2100 (inclusive), call
+ *     HwStepperCtrlConfigure( HW_STEPPER_NUM_1, HW_STEPPER_DIR_FWD, 3800 ).
+ *
+ * For the TEN_SEC_TIMER_MSG (every 10 sec):
+ *   - Unconditionally call HwStepperCtrlConfigure( HW_STEPPER_NUM_1, HW_STEPPER_DIR_FWD, 3800 ).
+ */
+static void vDoorMonitoringTask(void *pvParameters)
+{
+    uint32_t receivedMsg;
+    HwDoorPosition_t doorStatus;
+
+    /* Initialize hardware once */
+    HwDoorPositionSensorInit();
+    HwStepperCtrlInit(0);
+
+    for(;;)
+    {
+#if 0
+    	if(xQueueReceive(xDoorQueue, &receivedMsg, portMAX_DELAY) == pdPASS)
+        {
+
+            if(receivedMsg == DOOR_TIMER_MSG)
+            {
+            	EwPrint( " DOOR_TIMER_MSG received %d \n ", doorStatus );
+                /* Read door sensor status */
+                HwDoorPositionSensorReadStatus(&doorStatus);
+
+                if(doorStatus > 4000)
+                {
+                    HwStepperCtrlStop(0);
+                }
+                else if(doorStatus < 2000)
+                {
+                    HwStepperCtrlStop(0);
+                }
+                else if((doorStatus >= 2000) && (doorStatus <= 2100))
+                {
+                    HwStepperCtrlConfigure(0, 0, 3800);
+                    HwStepperCtrlStart( 0 );
+                }
+                /* Other doorStatus ranges may be handled as needed */
+            }
+
+            else if(receivedMsg == TEN_SEC_TIMER_MSG)
+            {
+            	EwPrint( " TEN_SEC_TIMER_MSG received\n " );
+            	HwStepperCtrlStop( 0 );
+                /* For the 10-sec timer message, call configure unconditionally */
+                 HwStepperCtrlConfigure(0, 1, 3800);
+                 HwStepperCtrlStart( 0 );
+            }
+
+        }
+#endif
+    	HwDoorPositionSensorReadStatus(&doorStatus);
+    	//EwPrint( " DOOR_TIMER_MSG received %d \n ", doorStatus );
+    	vTaskDelay(pdMS_TO_TICKS(3000));  // Delay for 1000ms (1 second)
+
+    	/*
+    	HwStepperCtrlConfigure(0, 0, 30000);
+        HwStepperCtrlStart( 0 );
+        vTaskDelay(pdMS_TO_TICKS(10000));  // Delay for 10000ms (10 second)
+        HwStepperCtrlStop( 0 );
+     	HwStepperCtrlConfigure(0, 1, 30000);
+		HwStepperCtrlStart( 0 );
+		vTaskDelay(pdMS_TO_TICKS(10000));  // Delay for 10000ms (10 second)
+		HwStepperCtrlStop( 0 );
+		*/
+
+    }
+}
+
+/* --- DoorSensorTest ---
+
+ */
+static void DoorSensorTest(void)
+{
+
+
+    /* Create a queue for inter-task and timer-to-task communication */
+    xDoorQueue = xQueueCreate(10, sizeof(uint32_t));
+    if(xDoorQueue == NULL)
+    {
+        /* Queue creation failed */
+        while(1);
+    }
+
+#if 0
+
+    /* Create the 200 ms timer */
+    xDoorTimer = xTimerCreate("DoorTimer",
+                              pdMS_TO_TICKS(200),
+                              pdTRUE,   /* Auto-reload */
+                              (void *)0,
+                              vDoorTimerCallback);
+    if(xDoorTimer == NULL)
+    {
+        /* Timer creation failed */
+        while(1);
+    }
+
+    /* Create the 10 sec timer */
+    xTenSecTimer = xTimerCreate("TenSecTimer",
+                                pdMS_TO_TICKS(10000),
+                                pdTRUE,   /* Auto-reload */
+                                (void *)0,
+                                vTenSecTimerCallback);
+    if(xTenSecTimer == NULL)
+    {
+        /* Timer creation failed */
+        while(1);
+    }
+
+    /* Start both timers */
+    if(xTimerStart(xDoorTimer, 0) != pdPASS)
+    {
+        /* Failed to start the 200 ms timer */
+        while(1);
+    }
+    if(xTimerStart(xTenSecTimer, 0) != pdPASS)
+    {
+        /* Failed to start the 10 sec timer */
+        while(1);
+    }
+#endif
+    /* Create the door monitoring task */
+    if(xTaskCreate(vDoorMonitoringTask,
+                   "DoorMonitoringTask",
+                   256,           /* Stack size in words (adjust as needed) */
+                   NULL,
+                   tskIDLE_PRIORITY + 1,
+                   NULL) != pdPASS)
+    {
+        /* Task creation failed */
+        while(1);
+    }
+
+
+}
+
+
+#if ( configSUPPORT_STATIC_ALLOCATION == 1 )
+/*
+ * The following function is required to provide the memory that is used by the Timer service task.
+ * This implementation statically allocates the TCB and stack for the Timer task.
+ */
+void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer,
+                                     StackType_t **ppxTimerTaskStackBuffer,
+                                     uint32_t *pulTimerTaskStackSize )
+{
+    /* Allocate statically the Timer task TCB. */
+    static StaticTask_t xTimerTaskTCB;
+
+    /* Allocate statically the Timer task stack. */
+    static StackType_t uxTimerTaskStack[ configTIMER_TASK_STACK_DEPTH ];
+
+    /* Pass out pointers to the static memory. */
+    *ppxTimerTaskTCBBuffer   = &xTimerTaskTCB;
+    *ppxTimerTaskStackBuffer = uxTimerTaskStack;
+    *pulTimerTaskStackSize   = configTIMER_TASK_STACK_DEPTH;
+}
+#endif /* configSUPPORT_STATIC_ALLOCATION */
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */

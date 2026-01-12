@@ -1,0 +1,529 @@
+/**
+ * @file ModbusDeviceInf.c
+ * @brief Modbus Device Information Interface Implementation.
+ *
+ * This file implements functions to manage Modbus device information.
+ * It includes the variable table, initialization, deinitialization, generic
+ * setVariable and getVariable functions, and static functions for read, write,
+ * and process operations.
+ *
+ * Author: Radhakrishnan Rajaram
+ * Company: Aria Innovations Pvt Ltd
+ * Version: 1.0
+ * Copyright: (c) 2025 Aria Innovations Pvt Ltd. All rights reserved.
+ */
+
+#include "ModbusDeviceInf.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>  /* For sscanf and snprintf */
+#include <inttypes.h>
+#include <ewrte.h>
+
+/*===========================================================================
+                              ERROR CODES
+  ===========================================================================*/
+#define MB_ERR_INVALID_POINTER    (-1)
+#define MB_ERR_INVALID_ADDRESS    (-2)
+#define MB_ERR_INVALID_LENGTH     (-3)
+#define MB_ERR_READ_ONLY          (-4)
+#define MB_ERR_INVALID_TYPE       (-5)
+
+/* For CHAR variables, maximum buffer size is (size * 2) + 1.
+   For our design, size is 20 registers (i.e. 40 bytes + 1 for '\0'). */
+#define MB_CHAR_BUFFER_SIZE   41
+
+/*===========================================================================
+                           INTERNAL DATA STRUCTURES
+  ===========================================================================*/
+
+/* Union for packing/unpacking 32-bit values */
+typedef union {
+    float f;
+    uint32_t u32;
+    uint16_t r[2];
+} Pack32_t;
+
+/* Union for storing the current value of a variable */
+typedef union {
+    char str[MB_CHAR_BUFFER_SIZE];   /* For MB_INF_TYPE_CHAR */
+    float f;                         /* For MB_INF_TYPE_FLOAT */
+    uint32_t u32;                    /* For MB_INF_TYPE_UINT */
+    uint16_t u16;                    /* For MB_INF_TYPE_UINT16 */
+    ModbusTime_t time;               /* For MB_INF_TYPE_TIME */
+} MB_Value_u;
+
+/* Structure representing one Modbus variable */
+typedef struct {
+    uint16_t modbusAddress;    /* Starting Modbus address */
+    const char *name;          /* Variable name */
+    uint8_t size;              /* Size in registers */
+    MB_INF_DataType_t dataType;/* Data type */
+    MB_INF_Access_t access;    /* Access mode */
+    MB_Value_u value;          /* Current value */
+} MB_Variable_t;
+
+/*===========================================================================
+                        MODBUS VARIABLE TABLE
+  ===========================================================================*/
+
+/* The Modbus variable table for the device */
+static MB_Variable_t modbusVars[MB_INF_TOTAL_VARIABLES] = {
+    /* modbusAddress,       name,                         size,         dataType,           access,         value */
+    { 1,    "Device Serial Number",    20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_RW, .value.str = "Aria 123456789" },
+    { 21,   "Device Name",             20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_RW, .value.str = "Aria Infusion Pump" },
+    { 41,   "Manufacturer",            20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_RW, .value.str = "Aria Innovations Pvt Limited" },
+    { 61,   "Manufacturing DateTime",  20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_RW, .value.str = "" },
+    { 81,   "Model Number",            20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_RW, .value.str = "" },
+    { 101,  "Firmware Version",        20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_RW, .value.str = "" },
+    { 301,  "Flow Rate",                2,  MB_INF_TYPE_FLOAT,   MB_INF_ACCESS_RW, .value.f = 0.0f },
+    { 303,  "VTBI",                     2,  MB_INF_TYPE_FLOAT,   MB_INF_ACCESS_RW, .value.f = 0.0f },
+    { 305,  "Infusion Time",            2,  MB_INF_TYPE_TIME,    MB_INF_ACCESS_RW, .value.time = {0,0,0,0} },
+    { 307,  "Volume Infused in ml",     2,  MB_INF_TYPE_FLOAT,   MB_INF_ACCESS_RW, .value.f = 0.0f },
+    { 309,  "Remaining Time",           2,  MB_INF_TYPE_TIME,    MB_INF_ACCESS_RW, .value.time = {0,0,0,0} },
+    { 311,  "Bolus Rate",               2,  MB_INF_TYPE_FLOAT,   MB_INF_ACCESS_RW, .value.f = 0.0f },
+    { 313,  "KVO Rate",                 2,  MB_INF_TYPE_FLOAT,   MB_INF_ACCESS_RW, .value.f = 0.0f },
+    { 315,  "Max Flow Rate",            2,  MB_INF_TYPE_FLOAT,   MB_INF_ACCESS_RW, .value.f = 0.0f },
+    { 401,  "Occlusion Pressure",       2,  MB_INF_TYPE_FLOAT,   MB_INF_ACCESS_RW, .value.f = 0.0f },
+    { 403,  "Air Line Sensitivity",     1,  MB_INF_TYPE_UINT16,  MB_INF_ACCESS_RW, .value.u16 = 0 },
+    { 404,  "Infusion Completion Alarm",1,  MB_INF_TYPE_UINT16,  MB_INF_ACCESS_RW, .value.u16 = 0 },
+    { 10001,"Brightness",              1,  MB_INF_TYPE_UINT16,  MB_INF_ACCESS_RW, .value.u16 = 0 },
+    { 10002,"LockingTime in Secs",     1,  MB_INF_TYPE_UINT16,  MB_INF_ACCESS_RW, .value.u16 = 0 },
+    { 40001,"Selected SSID",           20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_R,  .value.str = "" },
+    { 40021,"PasswordForSelectedSSID", 20, MB_INF_TYPE_CHAR,    MB_INF_ACCESS_R,  .value.str = "" },
+    { 40041,"Assigned IP Address IPV4",2,  MB_INF_TYPE_UINT,    MB_INF_ACCESS_RW, .value.u32 = 0 },
+    { 40043,"Subnet Mask",             2,  MB_INF_TYPE_UINT,    MB_INF_ACCESS_RW, .value.u32 = 0 },
+    { 40045,"Gateway",                 2,  MB_INF_TYPE_UINT,    MB_INF_ACCESS_RW, .value.u32 = 0 },
+    { 40045,"Signature",               1,  MB_INF_TYPE_UINT16,    MB_INF_ACCESS_RW, .value.u32 = 0x1235 }
+};
+
+/*===========================================================================
+                      LOCAL FUNCTION PROTOTYPES
+  ===========================================================================*/
+
+/* Forward declarations to avoid implicit declaration errors */
+static int findVariableByAddress(uint16_t address);
+static int16_t ModbusDeviceInf_Read(ModbusRequest_t* pRequest, ModbusResponse_t *pResponse);
+static int16_t ModbusDeviceInf_Write(ModbusRequest_t* pRequest, ModbusResponse_t *pResponse);
+
+/**
+ * @brief Search for a variable by its Modbus address.
+ *
+ * @param address The starting Modbus address.
+ * @return int Index into modbusVars array if found; -1 otherwise.
+ */
+static int findVariableByAddress(uint16_t address)
+{
+    for (int i = 0; i < MB_INF_TOTAL_VARIABLES; i++) {
+        if (modbusVars[i].modbusAddress == address)
+            return i;
+    }
+    return -1;
+}
+/**
+ * @brief Process a Modbus request.
+ *
+ * Matches the signature of ModbusFunctionPtr. Checks the function code and calls
+ * the corresponding read or write function. For unsupported codes, sets an error.
+ *
+ * @param input Pointer to the Modbus request structure.
+ * @param output Pointer to the Modbus response structure.
+ * @return int16_t 0 on success, negative value on error.
+ */
+static int16_t ModbusDeviceInf_Process(ModbusRequest_t *input, ModbusResponse_t *output)
+{
+    if (!input || !output)
+        return MB_ERR_INVALID_POINTER;
+
+    if (input->functionCode == MODBUS_FUNC_READ_HOLDING)
+    {
+        return ModbusDeviceInf_Read(input, output);
+    }
+    else if (input->functionCode == MODBUS_FUNC_WRITE_MULTIPLE)
+    {
+        return ModbusDeviceInf_Write(input, output);
+    }
+    else
+    {
+        output->slaveId = input->slaveId;
+        output->functionCode = input->functionCode;
+        output->errorCode = 0x01;  /* Illegal Function */
+        return -1;
+    }
+}
+
+/**
+ * @brief Read Modbus Device Information.
+ *
+ * Validates the request and packs the requested variable's value into the response.
+ *
+ * @param pRequest Pointer to the Modbus request structure.
+ * @param pResponse Pointer to the Modbus response structure.
+ * @return int16_t 0 on success, negative value on error.
+ */
+static int16_t ModbusDeviceInf_Read(ModbusRequest_t* pRequest, ModbusResponse_t *pResponse)
+{
+    int varIndex;
+    if (!pRequest || !pResponse)
+        return MB_ERR_INVALID_POINTER;
+    
+    uint16_t startAddress = pRequest->data.readHolding.startAddress;
+    uint16_t quantity = pRequest->data.readHolding.quantity;
+    
+    varIndex = findVariableByAddress(startAddress);
+    if (varIndex < 0)
+    {
+        pResponse->errorCode = 0x02;  /* Illegal Data Address */
+        return MB_ERR_INVALID_ADDRESS;
+    }
+
+    if (quantity != modbusVars[varIndex].size)
+    {
+        pResponse->errorCode = 0x03;  /* Invalid Data Value */
+        return MB_ERR_INVALID_LENGTH;
+    }
+    
+    pResponse->slaveId = pRequest->slaveId;
+    pResponse->functionCode = pRequest->functionCode;
+    pResponse->errorCode = 0;
+    pResponse->data.readHolding.byteCount = quantity * 2;
+    
+    switch (modbusVars[varIndex].dataType)
+    {
+        case MB_INF_TYPE_CHAR:
+        {
+            for (uint8_t i = 0; i < quantity; i++)
+            {
+                uint16_t regVal = 0;
+                uint8_t high = modbusVars[varIndex].value.str[i * 2];
+                uint8_t low  = modbusVars[varIndex].value.str[i * 2 + 1];
+                regVal = (high << 8) | low;
+                pResponse->data.readHolding.registers[i] = regVal;
+            }
+            break;
+        }
+        case MB_INF_TYPE_FLOAT:
+        {
+            Pack32_t pack;
+            pack.f = modbusVars[varIndex].value.f;
+            pResponse->data.readHolding.registers[0] = pack.r[0];
+            pResponse->data.readHolding.registers[1] = pack.r[1];
+            break;
+        }
+        case MB_INF_TYPE_TIME:
+        {
+            Pack32_t pack;
+            pack.u32 = (((uint32_t)modbusVars[varIndex].value.time.hour << 24) |
+                        ((uint32_t)modbusVars[varIndex].value.time.minute << 16) |
+                        ((uint32_t)modbusVars[varIndex].value.time.second << 8) |
+                        (modbusVars[varIndex].value.time.reserved));
+            pResponse->data.readHolding.registers[0] = pack.r[0];
+            pResponse->data.readHolding.registers[1] = pack.r[1];
+            break;
+        }
+        case MB_INF_TYPE_UINT16:
+        {
+            pResponse->data.readHolding.registers[0] = modbusVars[varIndex].value.u16;
+            break;
+        }
+        case MB_INF_TYPE_UINT:
+        {
+            Pack32_t pack;
+            pack.u32 = modbusVars[varIndex].value.u32;
+            pResponse->data.readHolding.registers[0] = pack.r[0];
+            pResponse->data.readHolding.registers[1] = pack.r[1];
+            break;
+        }
+        default:
+            break;
+    }
+    return 0;
+}
+
+/**
+ * @brief Write Modbus Device Information.
+ *
+ * Validates the request and unpacks the provided register values into the variable.
+ *
+ * @param pRequest Pointer to the Modbus request structure.
+ * @param pResponse Pointer to the Modbus response structure.
+ * @return int16_t 0 on success, negative value on error.
+ */
+static int16_t ModbusDeviceInf_Write(ModbusRequest_t* pRequest, ModbusResponse_t *pResponse)
+{
+    int varIndex;
+    if (!pRequest || !pResponse)
+        return MB_ERR_INVALID_POINTER;
+    
+    uint16_t startAddress = pRequest->data.writeMultiple.startAddress;
+    uint16_t quantity = pRequest->data.writeMultiple.quantity;
+    
+    varIndex = findVariableByAddress(startAddress);
+    if (varIndex < 0)
+    {
+        pResponse->errorCode = 0x02;
+        return MB_ERR_INVALID_ADDRESS;
+    }
+    EwPrint( " MbAddress = %d\t size: %d\t data Type: %d Value: %d\r\n",startAddress,quantity,modbusVars[varIndex].dataType,pRequest->data.writeMultiple.registers[0]);
+    if (quantity != modbusVars[varIndex].size)
+    {
+        pResponse->errorCode = 0x03;
+        return MB_ERR_INVALID_LENGTH;
+    }
+    
+    if (modbusVars[varIndex].access != MB_INF_ACCESS_RW)
+    {
+        pResponse->errorCode = 0x01;  /* Illegal function for write */
+        return MB_ERR_READ_ONLY;
+    }
+    
+    switch (modbusVars[varIndex].dataType)
+    {
+        case MB_INF_TYPE_CHAR:
+        {
+            for (uint8_t i = 0; i < quantity; i++)
+            {
+                uint16_t regVal = pRequest->data.writeMultiple.registers[i];
+                modbusVars[varIndex].value.str[i * 2]   = (char)(regVal >> 8);
+                modbusVars[varIndex].value.str[i * 2 + 1] = (char)(regVal & 0xFF);
+            }
+            modbusVars[varIndex].value.str[MB_CHAR_BUFFER_SIZE - 1] = '\0';
+            break;
+        }
+        case MB_INF_TYPE_FLOAT:
+        {
+            Pack32_t pack;
+            pack.r[0] = pRequest->data.writeMultiple.registers[0];
+            pack.r[1] = pRequest->data.writeMultiple.registers[1];
+            modbusVars[varIndex].value.f = pack.f;
+            break;
+        }
+        case MB_INF_TYPE_TIME:
+        {
+            Pack32_t pack;
+            pack.r[0] = pRequest->data.writeMultiple.registers[0];
+            pack.r[1] = pRequest->data.writeMultiple.registers[1];
+            modbusVars[varIndex].value.time.hour = (uint8_t)(pack.u32 >> 24);
+            modbusVars[varIndex].value.time.minute = (uint8_t)((pack.u32 >> 16) & 0xFF);
+            modbusVars[varIndex].value.time.second = (uint8_t)((pack.u32 >> 8) & 0xFF);
+            modbusVars[varIndex].value.time.reserved = (uint8_t)(pack.u32 & 0xFF);
+            break;
+        }
+        case MB_INF_TYPE_UINT16:
+        {
+            modbusVars[varIndex].value.u16 = pRequest->data.writeMultiple.registers[0];
+            break;
+        }
+        case MB_INF_TYPE_UINT:
+        {
+            Pack32_t pack;
+            pack.r[0] = pRequest->data.writeMultiple.registers[0];
+            pack.r[1] = pRequest->data.writeMultiple.registers[1];
+            modbusVars[varIndex].value.u32 = pack.u32;
+            break;
+        }
+        default:
+            break;
+    }
+    
+    pResponse->slaveId = pRequest->slaveId;
+    pResponse->functionCode = pRequest->functionCode;
+    pResponse->errorCode = 0;
+    pResponse->data.writeMultiple.startAddress = startAddress;
+    pResponse->data.writeMultiple.quantity = quantity;
+    
+    return 0;
+}
+
+/**
+ * @brief Set a Modbus variable's value from a string.
+ *
+ * For MB_INF_TYPE_CHAR variables the provided string (excluding the null terminator)
+ * must have a length exactly equal to (size * 2) bytes. For MB_INF_TYPE_FLOAT and
+ * MB_INF_TYPE_UINT/UINT16, the string is converted using atof/atoi. For MB_INF_TYPE_TIME,
+ * the expected format is "HH:MM:SS".
+ *
+ * @param var The Modbus variable identifier.
+ * @param value The new value as a string.
+ * @return int16_t 0 on success, negative value on error.
+ */
+int16_t ModbusDeviceInf_SetVariable(ModbusDeviceInf_Variable_t var, const char *value)
+{
+    if (value == NULL)
+        return MB_ERR_INVALID_POINTER;
+
+    if (var < 0 || var >= MB_INF_TOTAL_VARIABLES)
+        return MB_ERR_INVALID_ADDRESS;
+
+    MB_Variable_t *pVar = &modbusVars[var];
+
+    switch (pVar->dataType)
+    {
+        case MB_INF_TYPE_CHAR:
+        {
+            size_t expected_len = pVar->size * 2;
+            if (strlen(value) != expected_len)
+                return MB_ERR_INVALID_LENGTH;
+            strncpy(pVar->value.str, value, MB_CHAR_BUFFER_SIZE - 1);
+            pVar->value.str[MB_CHAR_BUFFER_SIZE - 1] = '\0';
+            break;
+        }
+        case MB_INF_TYPE_FLOAT:
+        {
+            pVar->value.f = (float)atof(value);
+            break;
+        }
+        case MB_INF_TYPE_TIME:
+        {
+            int hh, mm, ss;
+            if (sscanf(value, "%d:%d:%d", &hh, &mm, &ss) != 3)
+                return MB_ERR_INVALID_LENGTH;
+            pVar->value.time.hour = (uint8_t)hh;
+            pVar->value.time.minute = (uint8_t)mm;
+            pVar->value.time.second = (uint8_t)ss;
+            pVar->value.time.reserved = 0;
+            break;
+        }
+        case MB_INF_TYPE_UINT16:
+        {
+            pVar->value.u16 = (uint16_t)atoi(value);
+            break;
+        }
+        case MB_INF_TYPE_UINT:
+        {
+            pVar->value.u32 = (uint32_t)strtoul(value, NULL, 10);
+            break;
+        }
+        default:
+            return MB_ERR_INVALID_TYPE;
+    }
+    return 0;
+}
+
+/**
+ * @brief Get a Modbus variable's value as a string.
+ *
+ * This function converts the variable's current value to a string and writes
+ * it into the provided buffer. For MB_INF_TYPE_CHAR, the value is copied directly.
+ * For MB_INF_TYPE_FLOAT, MB_INF_TYPE_UINT16, and MB_INF_TYPE_UINT the value is converted to
+ * its string representation. For MB_INF_TYPE_TIME, the value is formatted as "HH:MM:SS".
+ *
+ * @param var The Modbus variable identifier.
+ * @param buffer The output buffer.
+ * @param bufSize The size of the output buffer.
+ * @return int16_t 0 on success, negative value on error.
+ */
+int16_t ModbusDeviceInf_GetVariable(ModbusDeviceInf_Variable_t var, char *buffer, size_t bufSize)
+{
+    if (buffer == NULL)
+        return MB_ERR_INVALID_POINTER;
+
+    if (var < 0 || var >= MB_INF_TOTAL_VARIABLES)
+        return MB_ERR_INVALID_ADDRESS;
+
+    MB_Variable_t *pVar = &modbusVars[var];
+
+    switch (pVar->dataType)
+    {
+        case MB_INF_TYPE_CHAR:
+        {
+            if (strlen(pVar->value.str) + 1 > bufSize)
+                return MB_ERR_INVALID_LENGTH;
+            strncpy(buffer, pVar->value.str, bufSize - 1);
+            buffer[bufSize - 1] = '\0';
+            break;
+        }
+        case MB_INF_TYPE_FLOAT:
+        {
+            if (snprintf(buffer, bufSize, "%f", pVar->value.f) >= bufSize)
+                return MB_ERR_INVALID_LENGTH;
+            break;
+        }
+        case MB_INF_TYPE_TIME:
+        {
+            if (snprintf(buffer, bufSize, "%02d:%02d:%02d",
+                         pVar->value.time.hour,
+                         pVar->value.time.minute,
+                         pVar->value.time.second) >= bufSize)
+                return MB_ERR_INVALID_LENGTH;
+            break;
+        }
+        case MB_INF_TYPE_UINT16:
+        {
+            if (snprintf(buffer, bufSize, "%u", pVar->value.u16) >= bufSize)
+                return MB_ERR_INVALID_LENGTH;
+            break;
+        }
+        case MB_INF_TYPE_UINT:
+        {
+            if (snprintf(buffer, bufSize, "%lu", (unsigned long)pVar->value.u32) >= bufSize)
+                return MB_ERR_INVALID_LENGTH;
+            break;
+        }
+        default:
+            return MB_ERR_INVALID_TYPE;
+    }
+    return 0;
+}
+
+/**
+ * @brief Initialize the Modbus Device Information interface.
+ *
+ * Initializes the variable table with default values, initializes the Modbus
+ * channel (MODBUS_CHANNEL_USB), and sets the process function.
+ *
+ * @return int16_t 0 on success, negative value on error.
+ */
+int16_t ModbusDeviceInf_Init(void)
+{
+    for (int i = 0; i < MB_INF_TOTAL_VARIABLES; i++) {
+        switch (modbusVars[i].dataType) {
+            case MB_INF_TYPE_CHAR:
+                if (modbusVars[i].value.str[0] == '\0')
+                    memset(modbusVars[i].value.str, 0, MB_CHAR_BUFFER_SIZE);
+                break;
+            case MB_INF_TYPE_FLOAT:
+                modbusVars[i].value.f = 0.0f;
+                break;
+            case MB_INF_TYPE_TIME:
+                modbusVars[i].value.time.hour = 0;
+                modbusVars[i].value.time.minute = 0;
+                modbusVars[i].value.time.second = 0;
+                modbusVars[i].value.time.reserved = 0;
+                break;
+            case MB_INF_TYPE_UINT16:
+                modbusVars[i].value.u16 = 0;
+                break;
+            case MB_INF_TYPE_UINT:
+                modbusVars[i].value.u32 = 0;
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (Modbus_Init(MODBUS_CHANNEL_UART4) != 0)
+        return -1;
+    if (Modbus_SetProcessFunction(MODBUS_CHANNEL_UART4, ModbusDeviceInf_Process) != 0)
+        return -1;
+
+    return 0;
+}
+
+/**
+ * @brief Deinitialize the Modbus Device Information interface.
+ *
+ * Unsets the process function and deinitializes the Modbus channel.
+ *
+ * @return int16_t 0 on success, negative value on error.
+ */
+int16_t ModbusDeviceInf_Deinit(void)
+{
+    int16_t ret1, ret2;
+    ret1 = Modbus_UnsetProcessFunction(MODBUS_CHANNEL_USB);
+    ret2 = Modbus_Deinit(MODBUS_CHANNEL_USB);
+    if(ret1 != 0 || ret2 != 0)
+        return -1;
+    return 0;
+}
+

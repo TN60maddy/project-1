@@ -1,0 +1,879 @@
+$version 1.0
+
+attr callStackMonitor_Show = false;
+attr connectInspectors = false;
+attr currentCodeInspector = Infusion::StartButton.pressReleaseSlot;
+attr debug_TrackUpdates = false;
+attr extractDoc_ClassOverview = true;
+attr extractDoc_DeleteOldFiles = false;
+attr extractDoc_Destination = ./HtmlDoc;
+attr extractDoc_IgnoreAccessors = true;
+attr extractDoc_IgnoreMembers = true;
+attr extractDoc_Navigation = true;
+attr extractDoc_Profiles = false;
+attr extractDoc_Title = Documentation;
+attr extractDoc_Variants = false;
+attr generateClut_ReservedColors = 0;
+attr heapMonitor_Show = false;
+attr language = Default;
+attr profile = WindowsInf;
+attr profilerMonitor_Show = false;
+attr search_CaseSensitive = true;
+attr search_History = FlowRateX100,VolumeInfused,MinValue,Background,Diagram,Triangle,Rectangle,rectangle,BorderColor,StopColor,.Running,Running,VTBIX100,79,DescrText,mL,startValue,OnSetCurrentValue,OnSetOutlet,FlowRate,30,Device,OnSetFlowRate,RemainingVolume,RemainingTime,°C,ValueText;
+attr search_IgnoreComments = false;
+attr search_IgnoreDescription = true;
+attr search_IgnoreMosaic = true;
+attr search_LimitToComposer = false;
+attr search_WholeWords = true;
+attr search_WildCards = false;
+
+view Project
+{
+  attr enableWireMode = false;
+  attr scrollTo = <-7,-199>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::Diagram
+{
+  attr scrollTo = <437,-6>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::InfusionDevice
+{
+  attr scrollTo = <-133,-55>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::DataItem
+{
+  attr scrollTo = <-7,-343>;
+  attr zoom = 1.0;
+}
+
+view enum Infusion::UnitType
+{
+  attr scrollTo = <-7,-247>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::MenuItem
+{
+  attr scrollTo = <-7,-55>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::StatusBar
+{
+  attr scrollTo = <-7,-55>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::StartButton
+{
+  attr enableWireMode = false;
+  attr scrollTo = <-7,-487>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::SliderItem
+{
+  attr scrollTo = <-157,260>;
+  attr zoom = 1.0;
+}
+
+view class Views::Text
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view profile WindowsInf
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Views::Image
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view unit Application
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::Infusion
+{
+  attr scrollTo = <-21,-117>;
+  attr zoom = 1.0;
+}
+
+view class Views::Rectangle
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view unit Infusion
+{
+  attr scrollTo = <-7,120>;
+  attr zoom = 1.0;
+}
+
+view class Resources::Bitmap
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Views::Border
+{
+  attr scrollTo = <-7,-487>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::BootScreen
+{
+  attr scrollTo = <-7,-109>;
+  attr zoom = 1.0;
+}
+
+view class Application::Application
+{
+  attr scrollTo = <600,137>;
+  attr zoom = 1.0;
+}
+
+view class Core::PropertyObserver
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Infusion::Button
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+codeview Infusion::InfusionDevice.OnSetInfusionTimeInSecs
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,3>;
+  attr codeSelEnd = <0,15>;
+  attr codeSelStart = <0,15>;
+}
+
+codeview Infusion::InfusionDevice.OnSetFlowRateX100
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <31,11>;
+  attr codeSelStart = <19,11>;
+}
+
+codeview Infusion::InfusionDevice.OnSetVTBIX100
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,9>;
+  attr codeSelEnd = <0,18>;
+  attr codeSelStart = <0,18>;
+}
+
+codeview Infusion::InfusionDevice.OnSetRemainingTime
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,6>;
+  attr codeSelEnd = <18,7>;
+  attr codeSelStart = <18,7>;
+}
+
+codeview Infusion::InfusionDevice.OnSetVolumeInfused
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <16,8>;
+  attr codeSelStart = <16,8>;
+}
+
+codeview Infusion::InfusionDevice.OnSetRemainingVolume
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,11>;
+  attr codeSelEnd = <37,6>;
+  attr codeSelStart = <37,6>;
+}
+
+codeview Core::Group.Add
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,9>;
+  attr codeSelEnd = <2,1>;
+  attr codeSelStart = <2,1>;
+}
+
+codeview Infusion::DataItem.onUpdate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <85,5>;
+  attr codeSelStart = <85,5>;
+}
+
+codeview Infusion::Diagram.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,27>;
+  attr codeSelEnd = <62,37>;
+  attr codeSelStart = <50,37>;
+}
+
+codeview Infusion::Diagram.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <9,10>;
+  attr codeSelStart = <0,10>;
+}
+
+codeview Core::PropertyObserver.onEvent
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::StatusBar.onUpdate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <87,5>;
+  attr codeSelStart = <87,5>;
+}
+
+codeview Infusion::StatusBar.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,23>;
+  attr codeSelEnd = <69,32>;
+  attr codeSelStart = <69,32>;
+}
+
+codeview Core::Timer.GetCurrentTime
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,9>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::Timer.Trigger
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::Timer.OnSetBegin
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::Timer.OnSetEnabled
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::Timer.OnSetPeriod
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::StartButton.pressReleaseSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <18,5>;
+  attr codeSelStart = <9,5>;
+}
+
+codeview Infusion::StartButton.enterLeaveSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::StartButton.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <112,26>;
+  attr codeSelStart = <112,26>;
+}
+
+codeview Infusion::StartButton.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,12>;
+  attr codeSelEnd = <9,7>;
+  attr codeSelStart = <0,7>;
+}
+
+codeview Infusion::DataItem.OnSetDataPoint
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,9>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::DataItem.AutoDemo
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::DataItem.enterLeaveSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::DataItem.pressReleaseSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::DataItem.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,3>;
+  attr codeSelEnd = <56,7>;
+  attr codeSelStart = <56,7>;
+}
+
+codeview Infusion::DataItem.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::MenuItem.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <61,2>;
+  attr codeSelStart = <61,2>;
+}
+
+codeview Infusion::MenuItem.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <9,0>;
+  attr codeSelStart = <9,0>;
+}
+
+codeview Infusion::MenuItem.AutoDemo
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::MenuItem.OnSetDataItem
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <8,5>;
+  attr codeSelStart = <8,5>;
+}
+
+codeview Core::Group.InvalidateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Core::SimpleTouchHandler.HandleEvent
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,299>;
+  attr codeSelEnd = <0,304>;
+  attr codeSelStart = <0,304>;
+}
+
+codeview Infusion::SliderItem.onOk
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,4>;
+  attr codeSelStart = <0,4>;
+}
+
+codeview Infusion::SliderItem.onPressSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::SliderItem.onIncrement
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <63,0>;
+  attr codeSelStart = <63,0>;
+}
+
+codeview Infusion::SliderItem.outletSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <2,2>;
+  attr codeSelStart = <2,2>;
+}
+
+codeview Infusion::SliderItem.onDragSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,16>;
+  attr codeSelEnd = <2,22>;
+  attr codeSelStart = <2,22>;
+}
+
+codeview Infusion::SliderItem.OnSetOutlet
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,1>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::SliderItem.OnSetCurrentValue
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::StartButton.onUpdate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::PropertyObserver.Trigger
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::PropertyObserver.OnSetOutlet
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::PropertyObserver.OnSetEnabled
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::Diagram.onUpdate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <19,2>;
+  attr codeSelStart = <0,2>;
+}
+
+codeview Infusion::SliderItem.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,11>;
+  attr codeSelEnd = <4,2>;
+  attr codeSelStart = <4,2>;
+}
+
+codeview Infusion::DataItem.OnSetCaption
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <9,4>;
+  attr codeSelStart = <0,4>;
+}
+
+codeview Infusion::Infusion.ShowSlider
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,16>;
+  attr codeSelEnd = <35,20>;
+  attr codeSelStart = <35,20>;
+}
+
+codeview Infusion::SliderItem.onDecrement
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <54,1>;
+}
+
+codeview Infusion::InfusionDevice.OnSetFlowRate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,11>;
+  attr codeSelEnd = <48,15>;
+  attr codeSelStart = <48,15>;
+}
+
+codeview Infusion::InfusionDevice.OnSetVTBI
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,4>;
+  attr codeSelEnd = <156,9>;
+  attr codeSelStart = <156,9>;
+}
+
+codeview Infusion::Infusion.onStartStop
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,3>;
+  attr codeSelEnd = <80,14>;
+  attr codeSelStart = <80,14>;
+}
+
+codeview Infusion::SliderItem.onReleaseSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::SliderItem.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,24>;
+  attr codeSelEnd = <0,75>;
+  attr codeSelStart = <0,75>;
+}
+
+codeview Infusion::SliderItem.onIncrement10
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,22>;
+  attr codeSelEnd = <5,27>;
+  attr codeSelStart = <5,27>;
+}
+
+codeview Infusion::SliderItem.onIncrement100
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,22>;
+  attr codeSelEnd = <5,27>;
+  attr codeSelStart = <5,27>;
+}
+
+codeview Infusion::SliderItem.onDecrement10
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,3>;
+  attr codeSelEnd = <53,25>;
+  attr codeSelStart = <53,25>;
+}
+
+codeview Infusion::SliderItem.onDecrement100
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,15>;
+  attr codeSelEnd = <2,25>;
+  attr codeSelStart = <2,25>;
+}
+
+codeview Views::Text.OnSetString
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::DataItem.OnSetBounds
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <3,4>;
+  attr codeSelStart = <3,4>;
+}
+
+codeview Infusion::MenuItem.OnSetBounds
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Core::Group.recalculateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,300>;
+  attr codeSelEnd = <0,305>;
+  attr codeSelStart = <0,305>;
+}
+
+codeview Core::Group.updateComponent
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <2,5>;
+  attr codeSelStart = <2,5>;
+}
+
+codeview Infusion::Diagram.onUpdateInfusionTime
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::Diagram.onUpdateFlowRate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::Diagram.onUpdateVTBI
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::Infusion.AppendMenuItem
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,24>;
+  attr codeSelEnd = <0,28>;
+  attr codeSelStart = <16,28>;
+}
+
+codeview Infusion::Infusion.onAnimateSlider
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,3>;
+  attr codeSelEnd = <0,8>;
+  attr codeSelStart = <0,8>;
+}
+
+codeview Infusion::Infusion.onFinishedSlider
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <14,5>;
+  attr codeSelStart = <14,5>;
+}
+
+codeview Infusion::Infusion.HideSlider
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,3>;
+  attr codeSelEnd = <26,9>;
+  attr codeSelStart = <26,9>;
+}
+
+codeview Core::Group.OnSetBounds
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,20>;
+  attr codeSelEnd = <0,25>;
+  attr codeSelStart = <0,25>;
+}
+
+codeview Infusion::Infusion.MenuItemSelected
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,3>;
+  attr codeSelEnd = <19,8>;
+  attr codeSelStart = <11,8>;
+}
+
+codeview Infusion::Infusion.onFinishedMenu
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,8>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Effects::Effect.timerSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,23>;
+  attr codeSelEnd = <0,33>;
+  attr codeSelStart = <0,33>;
+}
+
+codeview Infusion::Button.pressReleaseSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <74,2>;
+  attr codeSelStart = <74,2>;
+}
+
+codeview Infusion::Button.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <12,6>;
+  attr codeSelStart = <2,6>;
+}
+
+codeview Infusion::Button.enterLeaveSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::Button.OnHold
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::Button.OnPressSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <27,4>;
+  attr codeSelStart = <27,4>;
+}
+
+codeview Infusion::BootScreen.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,2>;
+  attr codeSelStart = <0,2>;
+}
+
+codeview Infusion::BootScreen.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::StartButton.OnSetIsRunning
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,11>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::SliderItem.OnSetUnit
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <41,4>;
+  attr codeSelStart = <41,4>;
+}
+
+codeview Infusion::SliderItem.OnSetMinValue
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,1>;
+  attr codeSelStart = <0,1>;
+}
+
+codeview Infusion::DataItem.OnSetUnit
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Infusion::InfusionDevice.Animate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <1,12>;
+}
+
+codeview Infusion::Infusion.AutoDemoSlot
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,24>;
+  attr codeSelEnd = <30,27>;
+  attr codeSelStart = <18,27>;
+}
+
+codeview Core::Root.DriveMultiTouchHitting
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,200>;
+  attr codeSelEnd = <2,205>;
+  attr codeSelStart = <2,205>;
+}
+
+breakpoints
+{
+  Infusion::StartButton.pressReleaseSlot 4;
+}

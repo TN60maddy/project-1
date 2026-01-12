@@ -1,0 +1,19 @@
+/*
+ * HwDoorClampSensorConfig.h
+ *
+ */
+
+#ifndef TARGETSPECIFIC_HWDOORCLAMPSENSORCONFIG_H_
+#define TARGETSPECIFIC_HWDOORCLAMPSENSORCONFIG_H_
+
+#include "stm32h7xx_hal.h"
+
+/* Definition for Optical Encoder TIMx clock resources */
+#define HW_DOOR_SENSOR_CLAMP_CLK_ENABLE() __HAL_RCC_GPIOG_CLK_ENABLE()
+
+/* GPIO Definitions */
+
+#define HW_DOORCLAMP_SENSOR_PORT GPIOG
+#define HW_DOORCLAMP_SENSOR_PIN GPIO_PIN_13
+
+#endif /* TARGETSPECIFIC_HWDOORCLAMPSENSORCONFIG_H_ */

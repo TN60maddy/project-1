@@ -1,0 +1,10 @@
+/*
+ * HwEepromConfig.h
+ */
+
+#ifndef EEPROM_INC_HWEEPROMCONFIG_H_
+#define EEPROM_INC_HWEEPROMCONFIG_H_
+
+
+
+#endif /* EEPROM_INC_HWEEPROMCONFIG_H_ */

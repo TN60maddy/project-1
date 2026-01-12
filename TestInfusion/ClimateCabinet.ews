@@ -1,0 +1,171 @@
+$version 1.0
+
+attr callStackMonitor_Show = false;
+attr connectInspectors = false;
+attr currentCodeInspector = Climate::Diagram.UpdateLayout;
+attr debug_TrackUpdates = false;
+attr extractDoc_ClassOverview = true;
+attr extractDoc_DeleteOldFiles = false;
+attr extractDoc_Destination = ./HtmlDoc;
+attr extractDoc_IgnoreAccessors = true;
+attr extractDoc_IgnoreMembers = true;
+attr extractDoc_Navigation = true;
+attr extractDoc_Profiles = false;
+attr extractDoc_Title = Documentation;
+attr extractDoc_Variants = false;
+attr generateClut_ReservedColors = 0;
+attr heapMonitor_Show = false;
+attr language = Default;
+attr profile = STM32;
+attr profilerMonitor_Show = false;
+attr search_CaseSensitive = false;
+attr search_IgnoreDescription = false;
+attr search_IgnoreMosaic = false;
+attr search_LimitToComposer = false;
+attr search_WholeWords = false;
+attr search_WildCards = false;
+
+view Project
+{
+  attr enableWireMode = false;
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view unit Climate
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Climate::Climate
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view enum Climate::MenuType
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Climate::DeviceClass
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Views::Rectangle
+{
+  attr scrollTo = <-7,-295>;
+  attr zoom = 1.0;
+}
+
+view profile STM32
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view unit Application
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Application::Application
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Effects::RectEffect
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+view class Climate::Diagram
+{
+  attr scrollTo = <-7,41>;
+  attr zoom = 1.0;
+}
+
+view class Resources::Bitmap
+{
+  attr scrollTo = <-7,-7>;
+  attr zoom = 1.0;
+}
+
+codeview Climate::Climate.onAnimateSlider
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Climate::DeviceClass.OnSetDwellTime
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,6>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Views::Rectangle.ChangeViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Effects::RectEffect.Animate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Climate::Diagram.onUpdate
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Climate::Diagram.UpdateViewState
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Resources::Bitmap.Update
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Resources::Bitmap.Init
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <0,0>;
+  attr codeSelStart = <0,0>;
+}
+
+codeview Climate::Diagram.UpdateLayout
+{
+  attr codeColSelect = false;
+  attr codeFirstPos = <0,0>;
+  attr codeSelEnd = <112,4>;
+  attr codeSelStart = <112,4>;
+}

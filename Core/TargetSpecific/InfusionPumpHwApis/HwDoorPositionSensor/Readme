@@ -1,0 +1,48 @@
+#How to use the APIs
+
+This file explains the procedure to test the Door Position API's used.
+API Details:
+
+ HwDoorPositionSensorInit( void ) => Initializes the ADC for Door Position.
+ HwDoorPositionSensorReadStatus( HwDoorPosition_t *pStatus ) => Read the Door Position Status
+
+Steps for Integration:
+
+Include the API's related files inside the main.c File.
+
+STEP 1 : Include the header files:
+         Ensure that the header files are included in your main source file.
+         
+STEP 2: Initialize the Door Position:
+        Call the HwDoorPositionSensorInit() function.
+
+STEP 3: Read the Door Position Status:
+        Call the HwDoorPositionSensorReadStatus() function and pass the arguments (HwDoorClampStatus_t *pStatus) for read status of door position.
+
+Example:
+Below is an example of how to test the APIs in the main function:
+
+#include "HwDoorPositionSensor.h"
+#include "main.h"
+
+/*To test Door Clamp Status */
+
+/*Initialize Door Position*/
+  HwDoorPositionSensorInit();
+  
+/*Read Status Door Position Sensor */
+HwDoorPosition_t *door_position
+
+HwDoorPositionSensorReadStatus(door_position);
+
+if(door_position == HW_DOORPOSITION_CLOSED)
+   printf("Door Position Closed");
+else if(door_position == HW_DOORPOSITION_HALFOPEN)
+    printf("Door Position Half Open");
+else if(door_position == HW_DOORPOSITION_FULLOPEN);    
+    printf("Door Position Full Open");
+    
+    
+    
+    
+   

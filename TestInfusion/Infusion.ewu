@@ -1,0 +1,3906 @@
+﻿$version 13.04
+
+// This is a GUI component.
+$rect <40,80,240,120>
+$output false
+class Infusion : Core::Group
+{
+  // Slot method to perform the menu move animation.
+  $rect <1024,390,1224,430>
+  slot onAnimateSlider
+  {
+    sender; /* the method is called from the sender object */
+
+    if (( slider == null ) || ( dataItem == null ))
+      return;
+
+    var int32 delta = Infusion::MenuItemSize.x / 5 * 4;
+
+    slider.Bounds.origin.x = MoveSliderEffect.Value;
+
+    if ( MoveSliderEffect.Value - delta < dataItemOriginX )
+      dataItem.Bounds.origin.x =  MoveSliderEffect.Value - delta;
+    else
+      dataItem.Bounds.origin.x = dataItemOriginX;
+
+  }
+
+  $rect <0,500,200,540>
+  inherited property Bounds = <0,0,960,360>;
+
+  $rect <1024,10,1224,50>
+  inherited method Init()
+  {
+    Rectangle.Bounds = Bounds.orect;
+
+    var Infusion::MenuItem item;
+    var Infusion::DataItem data;
+
+    Device.FlowRateX100 = 0;
+    Device.InfusionTimeInSecs = 0;
+    Device.RemainingTime = 0;
+    Device.VTBIX100 = 0;
+
+    item = new Infusion::MenuItem;
+    item.Caption       = "Flow Rate";
+    item.Type          = Infusion::MenuType.FlowRate;
+
+    data = new Infusion::DataItem;
+    data.Bounds.size   = Infusion::DataItemSizeLarge;
+    data.Caption       = "Flow Rate";
+    data.Unit          = Infusion::UnitType.FlowRate;
+    data.DataPoint     = ^Device.FlowRateX100;
+    data.MinValue      = 0;
+    data.MaxValue      = 120000;
+    data.ValueColor    = Infusion::GraphColor;
+    data.OnChange      = ShowSlider;
+
+    item.DataItem = data;
+
+
+
+    AppendMenuItem( item );  
+
+
+    item = new Infusion::MenuItem;
+    item.Caption       = "Infusion Time";
+    item.Type          = Infusion::MenuType.InfusionTime;
+
+    data = new Infusion::DataItem;
+    data.Bounds.size   = Infusion::DataItemSizeLarge;
+    data.Caption       = "Infusion Time";
+    data.Unit          = Infusion::UnitType.Time;
+    data.DataPoint     = ^Device.InfusionTimeInSecs;
+    data.MinValue      = 0;
+    data.MaxValue      = 86400;
+    data.ValueColor    = Infusion::TextColor;
+    data.OnChange      = ShowSlider;
+
+    item.DataItem = data;
+
+
+    AppendMenuItem( item );
+
+
+
+    item = new Infusion::MenuItem;
+    item.Caption       = "VTBI";
+    item.Type          = Infusion::MenuType.Vtbi;
+
+    data = new Infusion::DataItem;
+    data.Bounds.size   = Infusion::DataItemSizeLarge;
+    data.Caption       = "VTBI";
+    data.Unit          = Infusion::UnitType.Volume;
+    data.DataPoint     = ^Device.VTBIX100;
+    data.MinValue      = 0;
+    data.MaxValue      = 120000;
+    data.ValueColor    = Infusion::TextColor;
+    data.OnChange      = ShowSlider;
+
+    item.DataItem = data;
+
+    AppendMenuItem( item );
+
+    Diagram.Bounds = Infusion::ChartStopPos;
+    Restack( Diagram, 100 );
+
+    StartButton.Bounds = Infusion::StartButtonPos;
+
+    StatusBar.Bounds = Infusion::StatusBarPos;      
+
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Rectangle
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <-1,0,959,360>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This variable refers to the first menu item.
+  $rect <1224,60,1424,100>
+  var Infusion::MenuItem FirstMenuItem = null;
+
+  // The method 'AppendMenuItem' adds the menu item to the end of the chained list \
+  // of menu items.
+  $rect <1024,60,1224,100>
+  method void AppendMenuItem( arg Infusion::MenuItem aItem )
+  {
+    var point origin = Infusion::Spacing;
+
+    /* configure the item */
+    aItem.Bounds.size.x = Infusion::MenuItemSize.x + 120;
+    aItem.Bounds.size.y = Infusion::MenuItemSize.y;
+    aItem.OnChange = MenuItemSelected;
+
+    /* maybe the given item is the first one... */
+
+    if ( FirstMenuItem == null )
+    {
+      FirstMenuItem = aItem;
+      LastMenuItem = aItem;
+    }
+    else
+    {
+      /* calculate position of the new item relative to last item */
+      origin.y = origin.y + LastMenuItem.Bounds.y2;
+      
+      /* append new item at end of the list */
+      LastMenuItem.NextMenuItem = aItem;
+      LastMenuItem = aItem;
+    }
+
+    /* set position of the item */
+    aItem.Bounds.origin = origin;
+
+    /* show the item */
+    Add( aItem, 0 );
+
+    /* show all data items */
+    var Infusion::DataItem data = aItem.DataItem;
+    while ( data != null )
+    {
+      Add( data, 0 );
+      data = data.NextDataItem;
+    }
+
+    /* take care that start button and diagram are not overlapped... */
+    Restack( Diagram, 100 );
+    Restack( StartButton, 100 );
+
+
+
+
+
+  }
+
+  // This variable refers to the last menu item.
+  $rect <1225,100,1425,140>
+  var Infusion::MenuItem LastMenuItem = null;
+
+  // This slot method is called from the menu items when the user has clicked on \
+  // it.
+  $rect <1024,160,1224,200>
+  slot MenuItemSelected
+  {
+    var int32 shift = 0; 
+    var bool found = false;
+
+    /* remove slider if there is one */
+    if ( slider != null )
+      postsignal HideSlider;
+
+    /* ignore menu item selection in case that machine is running or an animation is running */
+    if ( Device.Running || MoveMenuEffect.Enabled )
+      return;
+
+    var Infusion::MenuItem selectedItem = (Infusion::MenuItem)sender;
+
+    /* check if the signal comes from a menu item */
+    if ( selectedItem == null )
+      return;
+
+    var Infusion::MenuItem item = FirstMenuItem;
+
+    while (( item != null ) && !found )
+    {
+      if ( item != selectedItem )
+      {
+        /* increase the distance for the animation */
+        shift = shift - Infusion::Spacing.y - Infusion::MenuItemSize.y;
+
+        /* create a copy of the menu item and append it at the end of the list */
+        var Infusion::MenuItem newItem = new Infusion::MenuItem;
+        newItem.Caption = item.Caption;
+        newItem.Type = item.Type;
+        AppendMenuItem( newItem );
+
+        /* take the next item */
+        item = item.NextMenuItem;
+      }
+      else
+        found = true;
+    }
+
+    /* start the animation */
+    MoveMenuEffect.Value1 = 0;
+    MoveMenuEffect.Value2 = shift;
+    MoveMenuEffect.Enabled = true;
+
+
+  }
+
+  // This is an int32 change effect.
+  $rect <1024,200,1224,240>
+  object Effects::Int32Effect MoveMenuEffect
+  {
+    preset OnFinished = onFinishedMenu;
+    preset OnAnimate = onAnimateMenu;
+    preset Timing = Effects::Timing.FastIn_EaseOut;
+    preset NoOfCycles = 1;
+    preset CycleDuration = 300;
+  }
+
+  // Slot method to perform the menu move animation.
+  $rect <1224,160,1424,200>
+  slot onAnimateMenu
+  {
+    sender; /* the method is called from the sender object */
+
+    var Infusion::MenuItem item = FirstMenuItem;
+
+    /* calculate start position and items delta */
+    var int32 y = Infusion::Spacing.y + MoveMenuEffect.Value;
+    var int32 delta = Infusion::Spacing.y + Infusion::MenuItemSize.y;
+
+    /* move all menu items... */
+    while ( item != null )
+    {
+      /* adjust position */
+      item.Bounds.origin.y = y;
+
+      /* calculate next position */
+      y = y + delta;
+
+      /* take next item */
+      item = item.NextMenuItem;
+    }
+
+  }
+
+  // Slot method to rearrange the menu structure after the menu move animation.
+  $rect <1224,200,1424,240>
+  slot onFinishedMenu
+  {
+    sender; /* the method is called from the sender object */
+
+    /* remove all menu items at the beginning of the chained list that are outside */
+    while ( FirstMenuItem != null )
+    {
+      if ( FirstMenuItem.Bounds.origin.y < 0 )
+      {
+        /* search for the next menu item that has the same menu type in order to give them the asociated data items */
+        var Infusion::MenuItem item = FirstMenuItem.NextMenuItem;
+        while (( item != null ) && ( item.Type != FirstMenuItem.Type ))
+          item = item.NextMenuItem;
+        if ( item != null )
+          item.DataItem = FirstMenuItem.DataItem;
+
+        /* set the following menu item as first menu item => first menu item will be deleted by GC */
+        Remove( FirstMenuItem );
+        FirstMenuItem = FirstMenuItem.NextMenuItem;
+      }
+      else
+        return;
+    }  
+
+  }
+
+  // Variable to access device class and to keep the simulated data in memory.
+  $rect <210,500,410,540>
+  var Infusion::InfusionDevice Device = Infusion::InfusionModule;
+
+  $rect <20,20,160,60>
+  object Infusion::StatusBar StatusBar
+  {
+    preset Bounds = <369,196,779,276>;
+    preset Visible = false;
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Diagram Diagram
+  {
+    preset Bounds = <61,70,621,340>;
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::StartButton StartButton
+  {
+    preset Layout = Core::Layout[AlignToLeft, AlignToTop];
+    preset Bounds = <159,176,369,296>;
+    preset OnAction = onStartStop;
+    preset IsRunning = ^Infusion::InfusionModule.Running;
+  }
+
+  // This is a slot method.
+  $rect <420,500,620,540>
+  slot onStartStop
+  {
+    sender; /* the method is called from the sender object */
+
+    /* remove slider if there is one */
+    if ( slider != null )
+      postsignal HideSlider;
+
+    /* restack diagram topmost */
+    Restack( Diagram, 100 );
+
+    /* take current diagram position as start value */
+    RectEffect.Value1 = Diagram.Bounds;
+
+    /* determine end position */
+    if ( Device.Running == true )
+    {
+      RectEffect.Value2 = Infusion::ChartStartPos;
+      StatusBar.Visible = true;
+      Device.VolumeInfused = 0.0;
+    }
+    else
+    {
+      RectEffect.Value2 = Infusion::ChartStopPos;
+      StatusBar.Visible = false;
+    }
+
+    /* restart timer */
+    RectEffect.Enabled = false;
+    RectEffect.Enabled = true;
+
+
+
+  }
+
+  // This is a move and resize rectangle effect.
+  $rect <420,540,620,580>
+  object Effects::RectEffect RectEffect
+  {
+    preset Timing = Effects::Timing.FastIn_EaseOut;
+    preset NoOfCycles = 1;
+    preset CycleDuration = 300;
+    preset Outlet = ^Diagram.Bounds;
+  }
+
+  // This is a slot method.
+  $rect <1024,300,1224,340>
+  slot ShowSlider
+  {
+    /* ignore menu item selection in case that machine is running */
+    if ( Device.Running )
+      return;
+
+    /* check if there is already a slider active */
+    if ( slider != null )
+      return;
+
+    /* store the data item, that needs the slider */
+    dataItem = (Infusion::DataItem)sender;
+    if ( dataItem == null )
+      return;
+
+    slider = new Infusion::SliderItem;
+    slider.Bounds.origin = point( Bounds.w, Infusion::Spacing.y );
+    slider.Bounds.size = Infusion::SliderSize;
+    slider.Outlet = dataItem.DataPoint;
+    slider.MinValue = dataItem.MinValue;
+    slider.MaxValue = dataItem.MaxValue;
+    slider.Triangle.Color = dataItem.ValueColor;
+    slider.OnClose = HideSlider;
+    slider.Unit = dataItem.Unit;
+
+    /* save position of data item - used for move out */
+    dataItemOriginX = dataItem.Bounds.origin.x;
+
+    /* restack data item to top */
+    Restack( dataItem, 100 );
+
+    Add( slider, 0 );
+
+    MoveSliderEffect.Value1 = Bounds.w;
+    MoveSliderEffect.Value2 = Bounds.w - Infusion::SliderSize.x - Infusion::Spacing.x + 1;
+    MoveSliderEffect.Enabled = false;
+    MoveSliderEffect.Enabled = true;
+
+
+
+  }
+
+  // This is a slot method.
+  $rect <1224,300,1424,340>
+  slot HideSlider
+  {
+    sender; /* the method is called from the sender object */
+
+    MoveSliderEffect.Value1 = Bounds.w - Infusion::SliderSize.x - Infusion::Spacing.x + 1;
+    MoveSliderEffect.Value2 = Bounds.w;
+    MoveSliderEffect.Enabled = false;
+    MoveSliderEffect.Enabled = true;
+    if( slider.Unit == Infusion::UnitType.FlowRate )
+    {
+      if( Device.FlowRateX100 != 0 )
+      {
+        Device.FlowRate = Device.FlowRateX100/100.0;
+        if( Device.VTBIX100 != 0 )
+        {
+           Device.InfusionTimeInSecs =  ( (float)Device.VTBIX100/(float)Device.FlowRateX100 ) * 3600.00;
+        }else if ( Device.InfusionTimeInSecs != 0 )
+        {
+           Device.VTBIX100 = Device.VTBIX100 =  Device.FlowRateX100 * (  Device.InfusionTimeInSecs / 3600.00 ); 
+           Device.VTBI = Device.VTBIX100 /100.0;
+        }
+      }
+    } else if( slider.Unit == Infusion::UnitType.Volume )
+    {
+        if( Device.VTBIX100 != 0 )
+        {
+          if( Device.FlowRateX100 != 0 )
+          {
+             Device.InfusionTimeInSecs =  ( (float)Device.VTBIX100/(float)Device.FlowRateX100 ) * 3600.00;
+          }else if ( Device.InfusionTimeInSecs != 0 )
+          {
+             Device.FlowRateX100 = (float)Device.VTBIX100 / (  Device.InfusionTimeInSecs / (float)3600.00 ); 
+             Device.FlowRate = Device.FlowRateX100/100.0;
+          }
+       }
+    } else if( slider.Unit == Infusion::UnitType.Time )
+    {
+        if ( Device.InfusionTimeInSecs != 0 )
+        {
+          if( Device.FlowRateX100 != 0 )
+          {
+             Device.VTBIX100 = Device.VTBIX100 =  Device.FlowRateX100 * (  Device.InfusionTimeInSecs / 3600.00 ); 
+             Device.VTBI = Device.VTBIX100 /100.0;
+             
+          }else if ( Device.VTBIX100!= 0 )
+          {
+             Device.FlowRateX100 = (float)Device.VTBIX100 / (  Device.InfusionTimeInSecs / (float)3600.00 ); 
+             Device.FlowRate = Device.FlowRateX100/100.0;
+          }
+        }
+    }
+
+
+  }
+
+  // This is an int32 change effect.
+  $rect <1024,350,1224,390>
+  object Effects::Int32Effect MoveSliderEffect
+  {
+    preset OnFinished = onFinishedSlider;
+    preset OnAnimate = onAnimateSlider;
+    preset Timing = Effects::Timing.FastIn_EaseOut;
+    preset NoOfCycles = 1;
+    preset CycleDuration = 500;
+  }
+
+  // Slot method to rearrange the menu structure after the menu move animation.
+  $rect <1024,430,1224,470>
+  slot onFinishedSlider
+  {
+    sender; /* the method is called from the sender object */
+
+    /* in case of move out, delete slider */
+    if ( MoveSliderEffect.Value2 > MoveSliderEffect.Value1 )
+    {
+      Remove( slider );
+      slider = null;
+    }
+
+
+  }
+
+  // This is a variable.
+  $rect <1224,350,1424,390>
+  var Infusion::SliderItem slider = null;
+
+  // This is a variable.
+  $rect <1224,390,1424,430>
+  var Infusion::DataItem dataItem = null;
+
+  // This is a variable.
+  $rect <1224,430,1424,470>
+  var int32 dataItemOriginX = 0;
+
+  // This is the main screen of the climate cabinet. It is responsible to arrange \
+  // and move the menu items on the left side and to host the diagram in the remaining \
+  // area.
+  // 
+  // As soon as a menu item is pressed, the slot method 'MenuItemSelected()' starts \
+  // the animation to move the desired menu item on the top position. The menu appears \
+  // like a carousel: the menu items that leave the screen on the top border will \
+  // be added at the bottom end. 
+  // 
+  // When the user presses the start button, the diagram is moved to cover the entire \
+  // screen above the status bar.
+  // 
+  // To run the application within the Prototyper, press 'F5'.
+  note legend Note1
+  {
+    attr Bounds = <10,590,1040,750>;
+  }
+
+  // Slot method to trigger the next phase of the auto demo.
+  $rect <630,500,830,540>
+  slot AutoDemoSlot
+  {
+    sender; /* the method is called from the sender object */
+
+    switch ( AutoState )
+    {
+      case  0: /* first we have so synchronize to TempHumid menu item */
+        if ( FirstMenuItem.Type == Infusion::MenuType.FlowRate )
+          postsignal FirstMenuItem.AutoDemo;
+        else if ( FirstMenuItem.NextMenuItem.Type == Infusion::MenuType.FlowRate )
+          postsignal FirstMenuItem.NextMenuItem.AutoDemo;
+        else
+          postsignal FirstMenuItem.NextMenuItem.NextMenuItem.AutoDemo;
+          
+      case  1: postsignal FirstMenuItem.NextMenuItem.AutoDemo;
+      case  2: postsignal FirstMenuItem.NextMenuItem.AutoDemo;
+      case  3: postsignal FirstMenuItem.NextMenuItem.AutoDemo;
+      case  4: postsignal FirstMenuItem.DataItem.AutoDemo;
+      case  5: Device.VolumeInfused = 65; 
+      case  6: Device.VolumeInfused = 75; 
+      case  7: Device.VolumeInfused = 79; 
+      case  8: postsignal FirstMenuItem.NextMenuItem.AutoDemo;
+      case  9: postsignal FirstMenuItem.DataItem.AutoDemo;
+      case 10: Device.InfusionTimeInSecs = 110; 
+      case 11: Device.InfusionTimeInSecs = 100; 
+      case 12: Device.InfusionTimeInSecs = 80; 
+      case 13: Device.InfusionTimeInSecs = 70; 
+      case 14: postsignal FirstMenuItem.NextMenuItem.AutoDemo;
+      case 15: postsignal FirstMenuItem.DataItem.AutoDemo;
+      case 16: Device.FlowRateX100 = 25; 
+      case 17: Device.FlowRateX100 = 20; 
+      case 18: Device.FlowRateX100 = 15; 
+      case 19: postsignal FirstMenuItem.NextMenuItem.AutoDemo;
+      case 20: 
+      {
+        Device.Running = true;
+        postsignal onStartStop;
+      }
+      
+      case 29:
+      {
+        Device.Running = false;
+        postsignal onStartStop;
+      }
+
+
+      default:
+       ;
+    }
+
+    AutoState = AutoState + 1;
+    if ( AutoState > 29 )
+      AutoState = 0;
+  }
+
+  // Variable to store the current phase of the auto demo.
+  $rect <1024,500,1224,540>
+  var int32 AutoState = 0;
+
+  // Timer object to drive the auto demo mode.
+  $rect <630,540,830,580>
+  object Core::Timer AutoDemoTimer
+  {
+    preset OnTrigger = AutoDemoSlot;
+    preset Period = 1000;
+    preset Begin = 0;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Line Line
+  {
+    preset Point2 = <158,364>;
+    preset Point1 = <158,3>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Line Line1
+  {
+    preset Point2 = <159,119>;
+    preset Point1 = <-1,119>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Line Line2
+  {
+    preset Point2 = <159,241>;
+    preset Point1 = <-1,241>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Rectangle BatteryRect
+  {
+    preset Bounds = <0,5,149,104>;
+    preset Color = Infusion::BackColor;
+  }
+
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler OnBatteryPressHandler
+  {
+    preset Point4 = <2,3>;
+    preset Point3 = <150,4>;
+    preset Point2 = <150,110>;
+    preset Point1 = <2,110>;
+  }
+
+  $rect <20,20,160,60>
+  object Views::WarpImage BatteryIcon
+  {
+    preset Point4 = <14,110>;
+    preset Point3 = <126,110>;
+    preset Point2 = <126,10>;
+    preset Point1 = <14,10>;
+    preset Bitmap = Infusion::Battery;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Rectangle HomeRect
+  {
+    preset Bounds = <1,126,150,234>;
+    preset Color = Infusion::BackColor;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Rectangle SettingsRect
+  {
+    preset Bounds = <2,250,151,358>;
+    preset Color = Infusion::BackColor;
+  }
+
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler OnHomePressHandler
+  {
+    preset Point4 = <4,126>;
+    preset Point3 = <149,126>;
+    preset Point2 = <149,234>;
+    preset Point1 = <2,234>;
+  }
+
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler OnSettingPressHandler
+  {
+    preset Point4 = <4,246>;
+    preset Point3 = <149,249>;
+    preset Point2 = <149,359>;
+    preset Point1 = <4,359>;
+  }
+
+  $rect <20,20,160,60>
+  object Views::WarpImage HomeIcon
+  {
+    preset Point4 = <22,231>;
+    preset Point3 = <122,231>;
+    preset Point2 = <122,131>;
+    preset Point1 = <22,131>;
+    preset Bitmap = Infusion::Home;
+  }
+
+  $rect <20,20,160,60>
+  object Views::WarpImage SettingsIcon
+  {
+    preset Point4 = <26,354>;
+    preset Point3 = <126,354>;
+    preset Point2 = <126,254>;
+    preset Point1 = <26,254>;
+    preset Bitmap = Infusion::Settings;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Line Line3
+  {
+    preset Point2 = <794,364>;
+    preset Point1 = <794,3>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Line Line4
+  {
+    preset Point2 = <956,241>;
+    preset Point1 = <796,241>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Line Line5
+  {
+    preset Point2 = <956,110>;
+    preset Point1 = <796,110>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  $rect <1234,498,1434,538>
+  var Infusion::BootScreen BootMsg;
+
+  $rect <1025,553,1225,593>
+  var int32 PrevFlowRate = 0;
+
+  $rect <1240,550,1440,590>
+  var int32 PrevVTBI = 0;
+
+  $rect <1040,610,1240,650>
+  var int32 PrevInfTime;
+
+  // Directives to adapt the order of the above members according to how these members 
+  // where arranged when the project content was stored. In this manner the storage 
+  // and the expected order of the members don't depend. Merging of changes in the 
+  // project files is simplified.
+  $member Init
+  $member Bounds
+  $member onAnimateSlider
+  $member Rectangle
+  $member FirstMenuItem
+  $member AppendMenuItem
+  $member LastMenuItem
+  $member MenuItemSelected
+  $member MoveMenuEffect
+  $member onAnimateMenu
+  $member onFinishedMenu
+  $member Device
+  $member StatusBar
+  $member Diagram
+  $member StartButton
+  $member onStartStop
+  $member RectEffect
+  $member ShowSlider
+  $member HideSlider
+  $member MoveSliderEffect
+  $member onFinishedSlider
+  $member slider
+  $member dataItem
+  $member dataItemOriginX
+  $member Note1
+  $member AutoDemoSlot
+  $member AutoState
+  $member AutoDemoTimer
+  $member Line
+  $member Line1
+  $member Line2
+  $member BatteryRect
+  $member OnBatteryPressHandler
+  $member BatteryIcon
+  $member HomeRect
+  $member SettingsRect
+  $member OnHomePressHandler
+  $member OnSettingPressHandler
+  $member HomeIcon
+  $member SettingsIcon
+  $member Line3
+  $member Line4
+  $member Line5
+  $member BootMsg
+  $member PrevFlowRate
+  $member PrevVTBI
+  $member PrevInfTime
+
+  // Directives to adapt the order of members belonging to this class so they appear 
+  // correctly arranged relative to the members inherited from the ancestor (super) 
+  // classes. The numbers indicate the order-displacement to apply on the respective 
+  // member once all members have been loaded and combined with members from the 
+  // ancestor classes.
+  $reorder onAnimateSlider 75
+}
+
+// This is a GUI component.
+$rect <40,180,240,220>
+$output false
+class MenuItem : Core::Group
+{
+  $rect <10,240,210,280>
+  inherited onset Bounds
+  {
+    super( value );
+
+    /* adjust the asociated data item... */
+    if ( DataItem != null )
+      DataItem.Bounds.origin = point( Bounds.x2, Bounds.y1 );
+
+  }
+
+  $rect <10,200,210,240>
+  inherited property Bounds = <0,0,240,95>;
+
+  $rect <10,160,210,200>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+    Text.Bounds = rect( Infusion::Spacing.x + 140, 0, aSize.x+140, aSize.y );
+
+
+
+  }
+
+  $rect <10,120,210,160>
+  inherited method UpdateViewState()
+  {
+    aState;
+
+
+
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Background
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <140,0,340,95>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a border view.
+  $rect <20,20,160,60>
+  object Views::Border Border
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <140,0,340,95>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text Text
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <140,0,340,95>;
+    preset WrapText = true;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "Infusion Menu Item";
+    preset Font = Infusion::MediumFont;
+    preset Color = Infusion::TextColor;
+  }
+
+  // The property 'OnChange' can refer to a slot method, which will receive a signal \
+  // as soon the user has pressed the button. Thereupon the method's logic will be \
+  // executed.
+  $rect <410,160,610,200>
+  property slot OnChange = null;
+
+  // This property 'Caption' contains the title of the button.
+  $rect <270,10,470,50>
+  property string Caption = "";
+
+  $rect <270,50,470,90>
+  onset Caption
+  {
+    /* store the given value */
+    pure Caption = value;
+
+    /* forward the new caption */
+    Text.String = value;
+  }
+
+  // The property 'NextMenuItem' refers to the next item within a chained list of \
+  // menu items.
+  $rect <210,240,410,280>
+  property Infusion::MenuItem NextMenuItem = null;
+
+  // The property 'NextDataItem' refers to the next item within a chained list of \
+  // data items. Each DataItem takes care, that its next DataItem will be placed \
+  // at the right side.
+  $rect <410,240,610,280>
+  property Infusion::DataItem DataItem = null;
+
+  // This property is used to determine the type of the menu item (used for loop \
+  // arround animation).
+  $rect <470,10,670,50>
+  property Infusion::MenuType Type = Infusion::MenuType.FlowRate;
+
+  // This is an onset method.
+  $rect <410,280,610,320>
+  onset DataItem
+  {
+    pure DataItem = value;
+
+    /* adjust the asociated data item... */
+    if ( pure DataItem != null )
+      pure DataItem.Bounds.origin = point( Bounds.x2, Bounds.y1 );
+
+  }
+
+  // Slot method to trigger the next phase of the auto demo.
+  $rect <620,240,820,280>
+  slot AutoDemo
+  {
+    /* inform the OnChange slot method */
+    signal OnChange;
+  }
+
+  // The class 'MenuItem' represents a menu item of the climate cabinet demo. The \
+  // content of the menu item can be defined with the properties 'Caption' and 'Type'.
+  // As soons as the user presses the menu item, the 'OnChange' slot method gets \
+  // notified.
+  // 
+  // The menu items are organized in a chained list. The member 'NextMenuItem' refers \
+  // to the next menu item.
+  // Each menu item can be linked to a 'Climate::DataItem' by using the property \
+  // 'NextDataItem'. As soon as the position of the menu item has changed, the linked \
+  // data item will follow.
+  note legend Note
+  {
+    attr Bounds = <10,330,820,480>;
+  }
+}
+
+// Color constant according UI design.
+$rect <690,50,890,90>
+$output false
+const color BorderColor = #05545DFF;
+
+// Color constant according UI design.
+$rect <690,90,890,130>
+$output false
+const color BackColor = #031C1FFF;
+
+// Color constant according UI design.
+$rect <690,130,890,170>
+$output false
+const color SelectColor = #03272BFF;
+
+// Color constant according UI design.
+$rect <690,170,890,210>
+$output false
+const color StartColor = #73BD13FF;
+
+// Color constant according UI design.
+$rect <690,210,890,250>
+$output false
+const color GraphColor = #00C9FFFF;
+
+// Color constant according UI design.
+$rect <690,250,890,290>
+$output false
+const color TextColor = #FFFFFFFF;
+
+// This is a font resource.
+$rect <490,535,690,575>
+$output false
+resource Resources::Font MediumFont
+{
+  attr fontname FontName = Roboto;
+  attr fontheight Height = 22;
+  attr fontquality Quality = High;
+  attr fontranges Ranges = 0x20-0xFF;
+  attr fontaspectratio AspectRatio = 1.0;
+  attr fontbold Bold = false;
+  attr fontitalic Italic = false;
+  attr fontkerning Kerning = true;
+  attr fontheightmode HeightMode = Compatible;
+  attr fontrowdistance RowDistance;
+}
+
+// Constant to define the spacing between the menu items.
+$rect <490,50,690,90>
+$output false
+const point Spacing = <20,20>;
+
+// Constant to define the size of a single menu item
+$rect <490,90,690,130>
+$output false
+const point MenuItemSize = <200,55>;
+
+// This is a GUI component.
+$rect <240,180,440,220>
+$output false
+class DataItem : Core::Group
+{
+  $rect <10,260,210,300>
+  inherited onset Bounds
+  {
+    super( value );
+
+    /* adjust the next data item... */
+    if ( NextDataItem != null )
+      NextDataItem.Bounds.origin = point( Bounds.x2, Bounds.y1 );
+
+  }
+
+  $rect <10,220,210,260>
+  inherited property Bounds = <0,0,240,95>;
+
+  $rect <10,180,210,220>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+    /* divide height in 3:2 ratio */
+    var int32 y = aSize.y * 3 / 5;
+
+    /* arrange the text items */
+    ValueText.Bounds = rect( Infusion::Spacing.x, 0, aSize.x, y );
+    DescrText.Bounds = rect( Infusion::Spacing.x, y, aSize.x, aSize.y );
+
+
+  }
+
+  $rect <10,140,210,180>
+  inherited method UpdateViewState()
+  {
+    aState;
+
+    /* colorize background if currently selected */
+    if ( TouchHandler.Down && TouchHandler.Inside )
+      Background.Color = Infusion::BorderColor;
+    else 
+      Background.Color = Infusion::SelectColor;
+
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Background
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,240,95>;
+    preset Color = Infusion::SelectColor;
+  }
+
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler TouchHandler
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Point4 = <0,95>;
+    preset Point3 = <240,95>;
+    preset Point2 = <240,0>;
+    preset Point1 = <0,0>;
+    preset OnLeave = enterLeaveSlot;
+    preset OnEnter = enterLeaveSlot;
+    preset OnRelease = pressReleaseSlot;
+    preset OnPress = pressReleaseSlot;
+  }
+
+  // This is a border view.
+  $rect <20,20,160,60>
+  object Views::Border Border
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <-1,0,240,95>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text DescrText
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, ResizeHorz];
+    preset Bounds = <20,60,240,95>;
+    preset WrapText = true;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "Description";
+    preset Font = Infusion::MediumFont;
+    preset Color = Infusion::HumidityColor;
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,140,410,180>
+  slot enterLeaveSlot
+  {
+    InvalidateViewState();
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,180,410,220>
+  slot pressReleaseSlot
+  {
+    /* releasing the finger outside the button area is ignored */
+    if ( !TouchHandler.Down && TouchHandler.Inside )
+    {
+      /* inform the OnChange slot method */
+      signal OnChange;
+    }
+  }
+
+  // The property 'OnChange' can refer to a slot method, which will receive a signal \
+  // as soon the user has pressed the button. Thereupon the method's logic will be \
+  // executed.
+  $rect <460,180,660,220>
+  property slot OnChange = null;
+
+  // This property 'Caption' contains the title of the data field.
+  $rect <260,10,460,50>
+  property string Caption = "";
+
+  $rect <260,50,460,90>
+  onset Caption
+  {
+    /* store the given value */
+    pure Caption = value;
+
+    /* forward the new caption */
+    DescrText.String = value;
+  }
+
+  // The property 'NextDataItem' refers to the next item within a chained list of \
+  // data items. Each DataItem takes care, that its next DataItem will be placed \
+  // at the right side.
+  $rect <210,260,410,300>
+  property Infusion::DataItem NextDataItem = null;
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text ValueText
+  {
+    preset Layout = Core::Layout[AlignToLeft, AlignToRight, AlignToTop, ResizeHorz];
+    preset Bounds = <20,0,240,60>;
+    preset WrapText = true;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "100";
+    preset Font = Resources::FontMedium;
+    preset Color = Infusion::HumidityColor;
+  }
+
+  // This is an image view.
+  $rect <20,20,160,60>
+  object Views::Image Image
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToRight];
+    preset Bounds = <215,70,230,85>;
+    preset Bitmap = Infusion::Edge;
+  }
+
+  // The property 'Unit' contains the type of unit of the value that should be shown.
+  $rect <460,10,660,50>
+  property Infusion::UnitType Unit = Infusion::UnitType.FlowRate;
+
+  $rect <460,50,660,90>
+  onset Unit
+  {
+    /* store the given value */
+    pure Unit = value;
+
+    /* force an update... */
+    postsignal onUpdate;
+  }
+
+  $rect <660,50,860,90>
+  onset ValueColor
+  {
+    /* check for any news... */
+    if ( value == pure ValueColor )
+      return;
+
+    /* store the new color value... */
+    pure ValueColor = value;
+
+    /* forward the new caption */
+    ValueText.Color = value;
+
+  }
+
+  // The property 'ValueColor' stores the color of the display value.
+  $rect <660,10,860,50>
+  property color ValueColor = #FFFFFFFF;
+
+  // The property 'DataPoint' refers to the value that should be displayed.
+  $rect <460,90,660,130>
+  property ^int32 DataPoint = null;
+
+  $rect <460,130,660,170>
+  onset DataPoint
+  {
+    /* check if something has changed */
+    if ( value == pure DataPoint )
+      return;
+
+    /* detatch from previous data point */
+    if ( pure DataPoint != null )
+      detachobserver onUpdate, pure DataPoint;
+
+    /* store the new data point */
+    pure DataPoint = value;
+
+    /* and attach to the new one */
+    if ( value != null )
+      attachobserver onUpdate, value;
+
+    /* finally, get the initial value */
+    postsignal onUpdate;
+  }
+
+  // Slot method to update the display value.
+  $rect <660,130,860,170>
+  slot onUpdate
+  {
+    sender; /* the method is called from the sender object */
+
+    /* format the new text to be displayed */
+    if ( pure DataPoint != null ) switch ( Unit )
+    {
+      case Infusion::UnitType.Time:
+      {
+        var int32 h = (int32)(DataPoint^) / ( 60 * 60 );
+        var int32 m = (int32)( ( DataPoint^ ) / 60 ) - ( h * 60 );
+        var int32 s  = (int32)( ( DataPoint^ ) ) - ( h * 60 * 60 ) - ( m * 60 );
+        ValueText.String = string( h ) + "h" + string( m, 2 ) +"m" + string( s, 2 ) + "s";
+      }
+      case Infusion::UnitType.FlowRate:
+      {
+        var float FlowRateFlt = DataPoint^/100.0;
+        ValueText.String = string( FlowRateFlt, 5,2 ) + "mL/h" ;
+      }
+      case Infusion::UnitType.Volume:
+      {
+        var float VolumeFlt = DataPoint^/100.0;
+        ValueText.String = string( VolumeFlt,5,2 ) + "mL";
+      }
+      default:
+       ;
+    }
+    else
+      ValueText.String = "---";
+
+
+  }
+
+  // The property MinValue defines the lower boundary of the widgets value range.
+  $rect <460,260,660,300>
+  property int32 MinValue = 0;
+
+  // The property MaxValue defines the upper boundary of the widgets value range.
+  $rect <660,260,860,300>
+  property int32 MaxValue = 100;
+
+  // Slot method to trigger the next phase of the auto demo.
+  $rect <210,310,410,350>
+  slot AutoDemo
+  {
+    /* inform the OnChange slot method */
+    signal OnChange;
+  }
+
+  // The class 'DataItem' displays the current value of a connected data point. The \
+  // appearance can be configured with the properties 'Caption', 'Unit' and 'ValueColor'.
+  // 
+  // Additionally, this class behaves as a button. As soon as the user presses the \
+  // item, the 'OnChange' slot method gets notified.
+  // 
+  // A 'DataItem' can be linked to another one by using the property 'NextDataItem'. \
+  // As soon as the position of the 'DataItem' has changed, the linked item will \
+  // follow.
+  note legend Note
+  {
+    attr Bounds = <10,360,860,510>;
+  }
+}
+
+// This is a font resource.
+$rect <490,575,690,615>
+$output false
+resource Resources::Font LargeFont
+{
+  attr fontname FontName = Roboto Light;
+  attr fontheight Height = 58;
+  attr fontquality Quality = High;
+  attr fontranges Ranges = '0'-'9','°','%',':','a'-'z','A'-'Z';
+  attr fontaspectratio AspectRatio = 1.0;
+  attr fontbold Bold = false;
+  attr fontitalic Italic = false;
+  attr fontkerning Kerning = true;
+  attr fontheightmode HeightMode = Compatible;
+  attr fontrowdistance RowDistance;
+}
+
+// This is a bitmap resource.
+$rect <690,495,890,535>
+$output false
+resource Resources::Bitmap Edge
+{
+  attr bitmapfile FileName = .\Res\Edge.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Native;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// This is an enumeration definition for signing the different menu items.
+$rect <40,130,240,170>
+$output false
+enum MenuType
+{
+  $rect <10,10,150,50>
+  item FlowRate;
+
+  $rect <160,10,300,50>
+  item InfusionTime;
+
+  $rect <310,10,450,50>
+  item Vtbi;
+}
+
+// Controller class, containing all data set values and all current values of the \
+// climate cabinet.
+$rect <40,454,240,494>
+$output false
+class InfusionDevice
+{
+  // Dwell time in minutes.
+  $rect <10,10,210,50>
+  property int32 InfusionTimeInSecs = 240;
+
+  $rect <10,50,210,90>
+  onset InfusionTimeInSecs
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0 )
+      value = 0;
+    if ( value > 86400 )
+      value = 86400;
+
+    /* check for new value */
+    if ( value == pure InfusionTimeInSecs )
+      return;
+
+    pure InfusionTimeInSecs = value;
+    notifyobservers ^InfusionTimeInSecs;
+
+  }
+
+  $rect <220,10,420,50>
+  property int32 FlowRateX100 = 30;
+
+  $rect <220,50,420,90>
+  onset FlowRateX100
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0 )
+      value = 0;
+    if ( value > 120000 )
+      value = 120000;
+
+    /* check for new value */
+    if ( value == pure FlowRateX100 )
+      return;
+
+    pure FlowRateX100 = value;
+
+    notifyobservers ^FlowRateX100;
+  }
+
+  $rect <430,10,630,50>
+  property int32 VTBIX100 = 45;
+
+  $rect <430,50,630,90>
+  onset VTBIX100
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0 )
+      value = 0;
+    if ( value > 120000 )
+      value = 120000;
+
+    /* check for new value */
+    if ( value == pure VTBIX100 )
+      return;
+
+    pure VTBIX100 = value;
+
+    notifyobservers ^VTBIX100;
+
+
+  }
+
+  $rect <10,110,210,150>
+  property float VolumeInfused;
+
+  $rect <10,150,210,190>
+  onset VolumeInfused
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0.0 )
+      value = 0;
+    if ( value > 1200.0 )
+      value = 1200.0;
+
+    /* check for new value */
+    if ( value == pure VolumeInfused )
+      return;
+
+    pure VolumeInfused = value;
+
+    notifyobservers ^VolumeInfused;
+  }
+
+  $rect <220,110,420,150>
+  property float RemainingVolume = 0;
+
+  $rect <220,150,450,190>
+  onset RemainingVolume
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0.0 )
+      value = 0;
+    if ( value > 1200.0 )
+      value = 1200.0;
+
+    /* check for new value */
+    if ( value == pure RemainingVolume )
+      return;
+
+    pure RemainingVolume = value;
+
+    notifyobservers ^RemainingVolume;
+  }
+
+  // Flag to start/stop the Infusion
+  $rect <10,220,210,260>
+  property bool Running = false;
+
+  $rect <10,260,210,300>
+  onset Running
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check for new value */
+    if ( value == pure Running )
+      return;
+
+    pure Running = value;
+
+    notifyobservers ^Running;
+
+    /* start animation for simulation */
+    if ( value )
+    {
+      RemainingTime = InfusionTimeInSecs;
+      RemainingVolume = 0;
+      Timer.Enabled = true;
+    }
+    else
+      Timer.Enabled = false;
+
+  }
+
+  // Remaining time in minutes, when machine is running.
+  $rect <640,10,840,50>
+  property int32 RemainingTime;
+
+  $rect <640,50,840,90>
+  onset RemainingTime
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0 )
+      value = 0;
+    if ( value > 84600 )
+      value = 84600;
+
+    /* check for new value */
+    if ( value == pure RemainingTime )
+      return;
+
+    pure RemainingTime = value;
+
+    notifyobservers ^RemainingTime;
+
+
+  }
+
+  // This is a timer object.
+  $rect <220,220,420,260>
+  object Core::Timer Timer
+  {
+    preset OnTrigger = Animate;
+    preset Period = 1000;
+  }
+
+  // This is a slot method.
+  $rect <220,260,420,300>
+  slot Animate
+  {
+    sender; /* the method is called from the sender object */
+
+    RemainingTime = RemainingTime - 10;
+
+    if ( RemainingTime == 0 )
+      Running = false;
+    else
+    {
+        VolumeInfused = VolumeInfused + FlowRate/360.0;  // every 100 ms animating for 10ml
+
+        //RemainingVolume = RemainingTime * FlowRateX100/60.0;  
+      
+    }
+  }
+
+  // This is the device class of the climate cabinet. It is the interface to the \
+  // "real" hardware.
+  // 
+  // Within this demo application a timer triggered animation method makes a simple \
+  // simulation of some heating and cooling progress, while the machine is running. 
+  note legend Note
+  {
+    attr Bounds = <10,310,630,420>;
+  }
+
+  // How to integrate your UI application with a real device?
+  // 
+  // https://doc.embedded-wizard.de/integrating-with-the-device
+  // https://doc.embedded-wizard.de/device-class-and-device-driver
+  note legend Note5
+  {
+    attr Bounds = <10,430,630,520>;
+  }
+
+  $rect <480,100,680,140>
+  property float FlowRate = 30;
+
+  $rect <470,150,670,190>
+  onset FlowRate
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0.0 )
+      value = 0.0;
+    if ( value > 1200.0 )
+      value = 1200.0;
+
+    /* check for new value */
+    if ( value == FlowRate )
+      return;
+
+    pure FlowRate = value;
+
+    notifyobservers ^FlowRate;
+  }
+
+  $rect <690,110,890,150>
+  property float VTBI = 45;
+
+  $rect <690,160,890,200>
+  onset VTBI
+  {
+    // Implement here your ON SET business logic, the access to the hardware,
+    // or any desired code to execute, when the property is written at the
+    // runtime.
+
+    /* check limits of given value */
+    if ( value < 0.0 )
+      value = 0.0;
+    if ( value > 1200.0 )
+      value = 1200.0;
+
+    /* check for new value */
+    if ( value == pure VTBI )
+      return;
+
+    pure VTBI = value;
+
+    notifyobservers ^VTBI;
+  }
+}
+
+$rect <240,454,440,494>
+$output false
+autoobject Infusion::InfusionDevice InfusionModule;
+
+// Constant to define the size of a single data item.
+$rect <490,130,690,170>
+$output false
+const point DataItemSize = <200,50>;
+
+// Constant to define the size of a single data item.
+$rect <490,170,690,210>
+$output false
+const point DataItemSizeLarge = <450,55>;
+
+// Constant to define the size of the diagram.
+$rect <490,210,690,250>
+$output false
+const rect ChartStopPos = <-1,-1,-1,-1>;
+
+// This is a GUI component.
+$rect <240,80,440,120>
+$output false
+class Diagram : Core::Group
+{
+  // This is a generic touch handler.
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler SimpleTouchHandler
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Point4 = <0,375>;
+    preset Point3 = <540,375>;
+    preset Point2 = <540,0>;
+    preset Point1 = <0,0>;
+  }
+
+  $rect <10,390,210,430>
+  inherited property Bounds = <0,0,540,375>;
+
+  $rect <210,390,410,430>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+    /* calculate upper and lower position according size of wiper */
+    var int32 y1 = WallpaperTop.Bitmap.FrameSize.y;
+    var int32 y2 = aSize.y - WallpaperBottom.Bitmap.FrameSize.y;
+
+    /* arrange wallpapers and  diagram */
+    WallpaperTop.Bounds = rect( 0, 0, aSize.x, y1 );
+    WallpaperBottom.Bounds = rect( 0, y2, aSize.x, aSize.y );
+    Graph.Bounds = rect( 2 * Infusion::Spacing.x, y1, aSize.x - Infusion::Spacing.x, y2 - Infusion::Spacing.y );
+    Rectangle.Bounds = rect( 0, y1, aSize.x, y2 );
+
+    /* arrange left scaling text */
+    var rect r = rect( 0, y1, 2 * Infusion::Spacing.x+2, y1 + Infusion::Spacing.y+2 );
+    UnitC.Bounds = r;
+    C4.Bounds = r;
+    C3.Bounds = r;
+    C2.Bounds = r;
+    C1.Bounds = r;
+
+    /* arrange lower scaling text */
+    r = rect( aSize.x - Infusion::Spacing.x - 3 * Infusion::Spacing.x, y2 - Infusion::Spacing.y, aSize.x - Infusion::Spacing.x, y2 );
+    UnitT.Bounds = r;
+    T4.Bounds = r;
+    T3.Bounds = r;
+    T2.Bounds = r;
+    T1.Bounds = r;
+
+  }
+
+  $rect <410,390,610,430>
+  inherited method UpdateViewState()
+  {
+    aState;
+
+    var int32 totalTime = (int32)(Infusion::InfusionModule.InfusionTimeInSecs)/60 ;
+    var int32 rangeTime = 0;
+
+    /* determine best fitting time range for horizontal direction */
+    if ( totalTime < 25 )
+      rangeTime = 25;
+    else if ( totalTime < 50 )
+      rangeTime = 50;
+    else if ( totalTime < 75 )
+      rangeTime = 75;
+    else if ( totalTime < 100 )
+      rangeTime = 100;
+    else if ( totalTime < 150 )
+      rangeTime = 150;
+    else if ( totalTime < 300 )
+      rangeTime = 300;
+    else if ( totalTime < 600 )
+      rangeTime = 600;
+    else if ( totalTime < 1200 )
+      rangeTime = 1200;
+    else
+      rangeTime = 1600;
+
+    /* adjust scale text */
+    T1.String = string( rangeTime / 5 * 1 );
+    T2.String = string( rangeTime / 5 * 2 );
+    T3.String = string( rangeTime / 5 * 3 );
+    T4.String = string( rangeTime / 5 * 4 );
+
+
+
+
+
+     if( Infusion::InfusionModule.FlowRate != 0.0 ) 
+     {
+       var float valueFlow = Infusion::InfusionModule.FlowRateX100/100.0;
+       FlowRateText.String="FlowRate: " + string( valueFlow,5,2)  +" mL/h";     
+      
+
+        if( Infusion::InfusionModule.Running == true )
+        {
+
+     
+            /* configure diagram */
+    /* create coordinates - complete area in horz/vert direction is used for range 0.0 to 1.0 */
+    var Charts::CoordList coords = new Charts::CoordList;
+
+    var float x1 = (float)0;
+    var float x2 = (float)(Infusion::InfusionModule.InfusionTimeInSecs/60.0 - (Infusion::InfusionModule.RemainingTime / 60.0 ) ) / (float)rangeTime;
+            var float y = (float)(Infusion::InfusionModule.VolumeInfused)/1500.0;
+
+    coords.AddCoord( x1, 0 );
+    coords.AddCoord( x2, y );
+     
+
+    /* configure diagram */
+    var point grid = point( Graph.Bounds.w / 5, Graph.Bounds.h / 5);
+
+
+
+    Graph.GridDistance = grid;
+    Graph.CoordOrigin = point( 0, Graph.Bounds.h );
+    Graph.PixelPerUnit = point( Graph.Bounds.w, -Graph.Bounds.h );
+    Graph.Coordinates = coords; 
+
+    /* arrange scale text items */
+    T1.Bounds.origin.x = Graph.Bounds.x1 + grid.x - T1.Bounds.w / 2;
+    T2.Bounds.origin.x = T1.Bounds.x1 + grid.x;
+    T3.Bounds.origin.x = T2.Bounds.x1 + grid.x;
+    T4.Bounds.origin.x = T3.Bounds.x1 + grid.x;
+
+    C4.Bounds.origin.y = Graph.Bounds.y1 + grid.y - C4.Bounds.h / 2;
+    C3.Bounds.origin.y = C4.Bounds.y1 + grid.y;
+    C2.Bounds.origin.y = C3.Bounds.y1 + grid.y;
+    C1.Bounds.origin.y = C2.Bounds.y1 + grid.y;
+    }
+     }else
+      {
+        
+      }
+
+  }
+
+  // This is a wallpaper view.
+  $rect <20,20,160,60>
+  object Views::Wallpaper WallpaperTop
+  {
+    preset Layout = Core::Layout[AlignToLeft, AlignToRight, AlignToTop, ResizeHorz];
+    preset Bounds = <0,0,540,20>;
+    preset Color = Infusion::BackColor;
+    preset Bitmap = Infusion::Wiper;
+  }
+
+  // This is a wallpaper view.
+  $rect <20,20,160,60>
+  object Views::Wallpaper WallpaperBottom
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, ResizeHorz];
+    preset Bounds = <0,355,540,375>;
+    preset Color = Infusion::BackColor;
+    preset FrameNumber = 1;
+    preset Bitmap = Infusion::Wiper;
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Rectangle
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <10,301,550,636>;
+    preset Color = Infusion::BackColor;
+  }
+
+  $rect <20,20,160,60>
+  object Charts::Graph Graph
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <29,22,524,318>;
+    preset LineColor = Infusion::GraphColor;
+    preset LineWidth = 4;
+    preset DotColor = Infusion::GraphColor;
+    preset DotWidth = 12;
+    preset BackColor = Infusion::SelectColor;
+    preset HorzGridColor = Infusion::BorderColor;
+    preset VertGridColor = #000000FF;
+    preset GridDistance = <96,59>;
+    preset DotBitmap = Charts::Dots12x12;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text T1
+  {
+    preset Layout = Core::Layout[AlignToBottom];
+    preset Bounds = <117,334,157,354>;
+    preset String = "120";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text T2
+  {
+    preset Layout = Core::Layout[AlignToBottom];
+    preset Bounds = <213,334,253,354>;
+    preset String = "240";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text T3
+  {
+    preset Layout = Core::Layout[AlignToBottom];
+    preset Bounds = <309,334,349,354>;
+    preset String = "360";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text T4
+  {
+    preset Layout = Core::Layout[AlignToBottom];
+    preset Bounds = <406,334,446,354>;
+    preset String = "480";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text UnitT
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToRight];
+    preset Bounds = <489,334,529,354>;
+    preset Alignment = Views::TextAlignment[AlignHorzRight, AlignVertCenter];
+    preset String = "min";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text C1
+  {
+    preset Layout = Core::Layout[AlignToLeft];
+    preset Bounds = <19,268,48,278>;
+    preset Alignment = Views::TextAlignment[AlignHorzRight, AlignVertCenter];
+    preset String = "300";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text C2
+  {
+    preset Layout = Core::Layout[AlignToLeft];
+    preset Bounds = <19,204,48,214>;
+    preset Alignment = Views::TextAlignment[AlignHorzRight, AlignVertCenter];
+    preset String = "600";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text C3
+  {
+    preset Layout = Core::Layout[AlignToLeft];
+    preset Bounds = <20,139,48,149>;
+    preset Alignment = Views::TextAlignment[AlignHorzRight, AlignVertCenter];
+    preset String = "900";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text C4
+  {
+    preset Layout = Core::Layout[AlignToLeft];
+    preset Bounds = <17,74,48,84>;
+    preset Alignment = Views::TextAlignment[AlignHorzRight, AlignVertCenter];
+    preset String = "1200";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text UnitC
+  {
+    preset Layout = Core::Layout[AlignToLeft, AlignToTop];
+    preset Bounds = <16,14,48,24>;
+    preset Alignment = Views::TextAlignment[AlignHorzRight, AlignVertCenter];
+    preset String = "mL";
+    preset Font = Infusion::SmallFont;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // Slot method to update the display value.
+  $rect <570,340,770,380>
+  slot onUpdate
+  {
+    sender;
+
+    InvalidateViewState();
+  }
+
+  // Handler to get notifications when 'DwellTime' property of the decive has changed.
+  $rect <570,10,770,50>
+  object Core::PropertyObserver InfustionTimeObserver
+  {
+    preset OnEvent = onUpdateInfusionTime;
+    preset Outlet = ^Infusion::InfusionModule.InfusionTimeInSecs;
+  }
+
+  // Handler to get notifications when 'DwellTime' property of the decive has changed.
+  $rect <570,50,770,90>
+  object Core::PropertyObserver FlowRateObserver
+  {
+    preset OnEvent = onUpdateFlowRate;
+    preset Outlet = ^Infusion::InfusionModule.FlowRateX100;
+  }
+
+  // Handler to get notifications when 'CoolTime' property of the decive has changed.
+  $rect <570,90,770,130>
+  object Core::PropertyObserver VtbiObserver
+  {
+    preset OnEvent = onUpdateVTBI;
+    preset Outlet = ^Infusion::InfusionModule.VTBIX100;
+  }
+
+  // Handler to get notifications when 'NominalTemp' property of the decive has changed.
+  $rect <570,130,770,170>
+  object Core::PropertyObserver VolumeInfusedObserver
+  {
+    preset OnEvent = onUpdate;
+    preset Outlet = ^Infusion::InfusionModule.VolumeInfused;
+  }
+
+  // Handler to get notifications when 'ActualTemp' property of the decive has changed.
+  $rect <570,210,820,250>
+  object Core::PropertyObserver RemainingVolumeObserver
+  {
+    preset OnEvent = onUpdate;
+    preset Outlet = ^Infusion::InfusionModule.RemainingVolume;
+  }
+
+  // Handler to get notifications when 'ReminaingTime' property of the decive has \
+  // changed.
+  $rect <570,250,820,290>
+  object Core::PropertyObserver RemainingTimeObserver
+  {
+    preset OnEvent = onUpdate;
+    preset Outlet = ^Infusion::InfusionModule.RemainingTime;
+  }
+
+  // Handler to get notifications when 'Running' property of the decive has changed.
+  $rect <570,290,820,330>
+  object Core::PropertyObserver RunningObserver
+  {
+    preset OnEvent = onUpdate;
+    preset Outlet = ^Infusion::InfusionModule.Running;
+  }
+
+  // The class 'Diagram' shows the current parameter of the climate cabinet, like \
+  // heat time, dwell time, cool time, nominal temperature or humidity.
+  // 
+  // For this purpose, a couple of property observers are used to listen on the corresponding \
+  // values of the device. Each time a value has changed, the diagram will be updated.
+  // 
+  // The temperature / time function is drawn by using a 'Charts::Graph' object. \
+  // Within the method 'UpdateViewState()' the coordinates are calculated and set \
+  // to the graph object. Additionally, the position of the dot line and some description \
+  // texts are updated.
+  note legend Note1
+  {
+    attr Bounds = <10,450,770,630>;
+  }
+
+  $rect <20,20,160,60>
+  object Views::Text FlowRateText
+  {
+    preset Layout = Core::Layout[AlignToLeft];
+    preset Bounds = <41,31,383,72>;
+    preset String = "Flow Rate";
+    preset Font = Resources::FontLarge;
+    preset Color = #FFFFFFFF;
+  }
+
+  // Slot method to update the display value.
+  $rect <830,310,1030,350>
+  slot onUpdateFlowRate
+  {
+    sender;
+
+    InvalidateViewState();
+  }
+
+  // Slot method to update the display value.
+  $rect <830,360,1030,400>
+  slot onUpdateVTBI
+  {
+    sender;
+
+    InvalidateViewState();
+  }
+
+  // Slot method to update the display value.
+  $rect <830,420,1040,460>
+  slot onUpdateInfusionTime
+  {
+    sender;
+
+    InvalidateViewState();
+  }
+
+  // Directives to adapt the order of the above members according to how these members 
+  // where arranged when the project content was stored. In this manner the storage 
+  // and the expected order of the members don't depend. Merging of changes in the 
+  // project files is simplified.
+  $member Bounds
+  $member SimpleTouchHandler
+  $member UpdateLayout
+  $member UpdateViewState
+  $member WallpaperTop
+  $member WallpaperBottom
+  $member Rectangle
+  $member Graph
+  $member T1
+  $member T2
+  $member T3
+  $member T4
+  $member UnitT
+  $member C1
+  $member C2
+  $member C3
+  $member C4
+  $member UnitC
+  $member onUpdate
+  $member InfustionTimeObserver
+  $member FlowRateObserver
+  $member VtbiObserver
+  $member VolumeInfusedObserver
+  $member RemainingVolumeObserver
+  $member RemainingTimeObserver
+  $member RunningObserver
+  $member Note1
+  $member FlowRateText
+  $member onUpdateFlowRate
+  $member onUpdateVTBI
+  $member onUpdateInfusionTime
+
+  // Directives to adapt the order of members belonging to this class so they appear 
+  // correctly arranged relative to the members inherited from the ancestor (super) 
+  // classes. The numbers indicate the order-displacement to apply on the respective 
+  // member once all members have been loaded and combined with members from the 
+  // ancestor classes.
+  $reorder SimpleTouchHandler 75
+}
+
+// This is a bitmap resource.
+$rect <690,535,890,575>
+$output false
+resource Resources::Bitmap Wiper
+{
+  attr bitmapfile FileName = .\Res\Wiper.png;
+  attr framesize FrameSize = <100,20>;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Alpha8;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// This is a font resource.
+$rect <490,495,690,535>
+$output false
+resource Resources::Font SmallFont
+{
+  attr fontname FontName = Roboto;
+  attr fontheight Height = 16;
+  attr fontquality Quality = High;
+  attr fontranges Ranges = 0x20-0xFF;
+  attr fontaspectratio AspectRatio = 1.0;
+  attr fontbold Bold = false;
+  attr fontitalic Italic = false;
+  attr fontkerning Kerning = true;
+  attr fontheightmode HeightMode = Compatible;
+  attr fontrowdistance RowDistance;
+}
+
+// Color constant according UI design.
+$rect <690,290,890,330>
+$output false
+const color HumidityColor = #00C9FFFF;
+
+// This is a bitmap resource.
+$rect <690,575,890,615>
+$output false
+resource Resources::Bitmap DashLineV
+{
+  attr bitmapfile FileName = .\Res\DashLineV.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Alpha8;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// This is a bitmap resource.
+$rect <690,615,890,655>
+$output false
+resource Resources::Bitmap DashLineH
+{
+  attr bitmapfile FileName = .\Res\DashLineH.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Alpha8;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// This is a GUI component.
+$rect <40,220,240,260>
+$output false
+class StartButton : Core::Group
+{
+  $rect <10,240,210,280>
+  inherited property Bounds = <0,0,240,135>;
+
+  $rect <10,200,210,240>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+    /* get upper starting point */
+    var int32 y = Wallpaper.Bitmap.FrameSize.y;
+
+    /* arrange all members within the button */
+    Wallpaper.Bounds = rect( 0, 0, aSize.x, y );
+    Rectangle.Bounds = rect( 0, y, aSize.x, aSize.y );
+    Background.Bounds = rect( 0, y, aSize.x, aSize.y - Infusion::Spacing.y );
+    Border.Bounds = Background.Bounds;
+    Text.Bounds = rect( Infusion::Spacing.x - 10, Infusion::Spacing.y, aSize.x, aSize.y - Infusion::Spacing.y );
+    TouchHandler.Point1 = point( 0, y );
+    TouchHandler.Point2 = point( aSize.x, y );
+    TouchHandler.Point3 = point( aSize.x, aSize.y );
+    TouchHandler.Point4 = point( 0, aSize.y );
+
+
+
+
+
+  }
+
+  $rect <10,160,210,200>
+  inherited method UpdateViewState()
+  {
+    aState;
+
+    if ( IsRunning == null )
+      return;
+
+    /* change the caption of the button */
+    if ( IsRunning^ )
+    {
+       Text.String = "Stop Infusion";       
+
+    }
+    else
+    {
+         Text.String = "Start Infusion";
+     }
+
+
+    /* colorize background if currently selected */
+    if ( TouchHandler.Down && TouchHandler.Inside )
+      Background.Color = Infusion::BorderColor;
+    else 
+    {
+      if ( IsRunning^ )
+        Background.Color = Infusion::BorderColor;
+      else
+        Background.Color = Infusion::StartColor;
+    }
+
+  }
+
+  // This is a wallpaper view.
+  $rect <20,20,160,60>
+  object Views::Wallpaper Wallpaper
+  {
+    preset Layout = Core::Layout[AlignToLeft, AlignToRight, AlignToTop, ResizeHorz];
+    preset Bounds = <0,0,240,20>;
+    preset Color = Infusion::BackColor;
+    preset Bitmap = Infusion::Wiper;
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Rectangle
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,20,240,135>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Background
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,20,240,115>;
+    preset Color = Infusion::StartColor;
+  }
+
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler TouchHandler
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Point4 = <0,115>;
+    preset Point3 = <240,115>;
+    preset Point2 = <240,20>;
+    preset Point1 = <0,20>;
+    preset OnLeave = enterLeaveSlot;
+    preset OnEnter = enterLeaveSlot;
+    preset OnRelease = pressReleaseSlot;
+    preset OnPress = pressReleaseSlot;
+  }
+
+  // This is a border view.
+  $rect <20,20,160,60>
+  object Views::Border Border
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,20,240,115>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text Text
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <20,10,240,120>;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "Start Infusion";
+    preset Font = Resources::FontLarge;
+    preset Color = Infusion::TextColor;
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,160,410,200>
+  slot enterLeaveSlot
+  {
+    InvalidateViewState();
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,200,410,240>
+  slot pressReleaseSlot
+  {
+    /* releasing the finger outside the button area is ignored */
+    if ( !TouchHandler.Down && TouchHandler.Inside )
+    {
+      if( (  ( Infusion::InfusionModule.VTBIX100 != 0 ) && (  Infusion::InfusionModule.InfusionTimeInSecs != 0) ) || ( Infusion::InfusionModule.FlowRateX100 !=0 ) ) 
+      {
+        if ( IsRunning != null )
+        IsRunning^ = !IsRunning^;    
+
+      }
+      /* inform the slot method */
+      signal OnAction;
+    }
+  }
+
+  // The property 'OnAction' can refer to a slot method, which will receive a signal \
+  // as soon the user has pressed the button. Thereupon the method's logic will be \
+  // executed.
+  $rect <410,200,610,240>
+  property slot OnAction = null;
+
+  // Data point property that refers to the value that should be displayed within \
+  // the diagram.
+  $rect <260,10,460,50>
+  property ^bool IsRunning = null;
+
+  $rect <260,50,460,90>
+  onset IsRunning
+  {
+    /* check if something has changed */
+    if ( value == pure IsRunning )
+      return;
+
+    /* detatch from previous data point */
+    if ( pure IsRunning != null )
+      detachobserver onUpdate, pure IsRunning;
+
+    /* store the new data point */
+    pure IsRunning = value;
+
+    /* and attach to the new one */
+    if ( value != null )
+      attachobserver onUpdate, value;
+
+    /* finally, get the initial value */
+    postsignal onUpdate;
+  }
+
+  // Slot method to update the display value.
+  $rect <260,90,460,130>
+  slot onUpdate
+  {
+    sender;
+
+    InvalidateViewState();
+    signal OnAction;
+
+  }
+
+  // The class 'StartButton' implements a simple toggle button to start and stop \
+  // the climate cabinet.
+  // Each time the user has pressed the button, the value referred by the outlet \
+  // property 'IsRunning' will be changed and the button is redrawn. 
+  note legend Note
+  {
+    attr Bounds = <10,290,610,400>;
+  }
+
+  // Directives to adapt the order of members belonging to this class so they appear 
+  // correctly arranged relative to the members inherited from the ancestor (super) 
+  // classes. The numbers indicate the order-displacement to apply on the respective 
+  // member once all members have been loaded and combined with members from the 
+  // ancestor classes.
+  $reorder ExtendClipping 1
+  $reorder DrawForeground 1
+  $reorder DrawBackground 1
+  $reorder GetMaximalSize 1
+  $reorder GetMinimalSize 1
+  $reorder FindActiveDialogByClass 1
+  $reorder FindDialogByClass 1
+  $reorder FindCurrentDialog 1
+  $reorder IsCurrentDialog 1
+  $reorder IsActiveDialog 1
+  $reorder IsDialog 1
+  $reorder GetIndexOfDialog 1
+  $reorder GetDialogAtIndex 1
+  $reorder CountDialogs 1
+  $reorder SwitchToDialog 1
+  $reorder DismissDialog 1
+  $reorder PresentDialog 1
+  $reorder ObtainFocus 1
+  $reorder HasViewState 1
+  $reorder LocalPosition 1
+  $reorder GlobalPosition 1
+  $reorder DispatchEvent 1
+  $reorder BroadcastEventAtPosition 1
+  $reorder BroadcastEvent 1
+  $reorder UpdateLayout 1
+  $reorder UpdateViewState 1
+  $reorder InvalidateLayout 1
+  $reorder InvalidateViewState 1
+  $reorder InvalidateArea 1
+  $reorder GetIndexOfView 1
+  $reorder GetViewAtIndex 1
+  $reorder CountViews 1
+  $reorder FindViewWithStackingPriority 1
+  $reorder FindViewInDirection 1
+  $reorder FindViewWithinArea 1
+  $reorder FindViewAtPosition 1
+  $reorder FindPrevView 1
+  $reorder FindNextView 1
+  $reorder FindSiblingView 1
+  $reorder GetContentArea 1
+  $reorder FadeGroup 1
+  $reorder RestackBehind 1
+  $reorder RestackBack 1
+  $reorder RestackTop 1
+  $reorder Restack 1
+  $reorder RemoveAll 1
+  $reorder Remove 1
+  $reorder AddBehind 1
+  $reorder Add 1
+  $reorder DeriveEnabledState 1
+  $reorder Focus 1
+  $reorder ClipViews 1
+  $reorder Buffered 1
+  $reorder Enabled 1
+  $reorder Opacity 1
+  $reorder Embedded 1
+  $reorder AlphaBlended 1
+  $reorder Visible 1
+  $reorder Wallpaper 1
+  $reorder Rectangle 1
+  $reorder Background 1
+  $reorder TouchHandler 1
+  $reorder Border 1
+  $reorder Text 1
+  $reorder enterLeaveSlot 1
+  $reorder pressReleaseSlot 1
+  $reorder OnAction 1
+  $reorder IsRunning 1
+  $reorder OnSetIsRunning 1
+  $reorder onUpdate 1
+  $reorder Note 1
+}
+
+// Constant to define the size of the diagram.
+$rect <490,250,690,290>
+$output false
+const rect ChartStartPos = <160,10,790,240>;
+
+// This is a GUI component.
+$rect <240,220,440,260>
+$output false
+class StatusBar : Core::Group
+{
+  $rect <10,120,210,160>
+  inherited property Bounds = <0,0,520,95>;
+
+  $rect <220,120,420,160>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+    var int32 dx = Infusion::Spacing.x / 2;
+
+    /* divide height in 3:2 ratio */
+    var int32 y = aSize.y * 3 / 5;
+
+    /* divide status bar into three parts */
+    var int32 x1 = aSize.x * 7 / 26;
+    var int32 x2 = ( aSize.x - x1 ) / 2 + x1;
+
+    /* arrange operation info field */
+    RectOp.Bounds = rect( 0, 0, x1, aSize.y );
+    TextOp.Bounds = RectOp.Bounds;
+
+    Line.Point1 = point( x1, 0 );
+    Line.Point2 = point( x1, aSize.y );
+
+
+    VolumeInfusedLabel.Bounds = rect( x1 + dx, 0, x2, y );
+    TextTemp.Bounds = rect( x1 + dx, y, x2, aSize.y );
+
+    Line0.Point1 = point( x2, 0 );
+    Line0.Point2 = point( x2, aSize.y );
+
+    Line1.Point1 = point( aSize.x-1, 0 );
+    Line1.Point2 = point( aSize.x-1, aSize.y );
+
+
+    /* arrange remaining time */
+    ValueTime.Bounds = rect( x2 + dx, 0, aSize.x, y );
+    TextTime.Bounds = rect( x2 + dx, y, aSize.x, aSize.y );
+
+    TextOp.Visible = Infusion::InfusionModule.Running;
+    RectOp.Visible = Infusion::InfusionModule.Running;
+                            
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Background
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,520,95>;
+    preset Color = Infusion::SelectColor;
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle RectOp
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToTop, ResizeVert];
+    preset Bounds = <0,0,140,95>;
+    preset Color = Infusion::StartColor;
+  }
+
+  // This is a border view.
+  $rect <20,20,160,60>
+  object Views::Border Border
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,521,95>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text TextTime
+  {
+    preset Layout = Core::Layout[AlignToTop, ResizeHorz];
+    preset Bounds = <353,57,517,95>;
+    preset Ellipsis = true;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "Remaining Time";
+    preset Font = Infusion::MediumFont;
+    preset Color = Infusion::TextColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text ValueTime
+  {
+    preset Layout = Core::Layout[AlignToTop, ResizeHorz];
+    preset Bounds = <351,0,520,57>;
+    preset WrapText = true;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "";
+    preset Font = Resources::FontMedium;
+    preset Color = Infusion::TextColor;
+  }
+
+  // Slot method to update the display value.
+  $rect <540,120,740,160>
+  slot onUpdate
+  {
+    sender; /* the method is called from the sender object */
+
+    /* create the new text to be displayed */
+    var int32 h = (Infusion::InfusionModule.RemainingTime) / 3600;
+    var int32 m = (Infusion::InfusionModule.RemainingTime - ( h * 3600 ) )/60;
+    var int32 s = (Infusion::InfusionModule.RemainingTime ) - ( m * 60 ) - ( h * 3600 );
+    ValueTime.String = string( h,2 ) + "h" + string( m, 2 ) + "m"+string( s, 2 ) + "s";
+
+    VolumeInfusedLabel.String = string( Infusion::InfusionModule.VolumeInfused,5,2 ) + "mL";
+
+    TextOp.Visible = Infusion::InfusionModule.Running;
+    RectOp.Visible = Infusion::InfusionModule.Running;
+      
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text TextTemp
+  {
+    preset Layout = Core::Layout[AlignToTop, ResizeHorz];
+    preset Bounds = <150,60,330,95>;
+    preset Ellipsis = true;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "Volume Infused";
+    preset Font = Infusion::MediumFont;
+    preset Color = Infusion::TextColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text VolumeInfusedLabel
+  {
+    preset Layout = Core::Layout[AlignToTop, ResizeHorz];
+    preset Bounds = <150,0,344,57>;
+    preset WrapText = true;
+    preset Alignment = Views::TextAlignment[AlignHorzLeft, AlignVertCenter];
+    preset String = "";
+    preset Font = Resources::FontMedium;
+    preset Color = Infusion::HumidityColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToTop, ResizeVert];
+    preset Point2 = <140,100>;
+    preset Point1 = <140,0>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line0
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToTop, ResizeVert];
+    preset Point2 = <344,95>;
+    preset Point1 = <344,0>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text TextOp
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToTop, ResizeVert];
+    preset Bounds = <0,0,140,95>;
+    preset WrapText = true;
+    preset Alignment = Views::TextAlignment[AlignHorzCenter, AlignVertCenter];
+    preset String = "Infusion\nProgress";
+    preset Font = Infusion::MediumFont;
+    preset Color = Infusion::TextColor;
+  }
+
+  // The class 'StatusBar' informs the user about the current running state, the \
+  // actual temperature and the remaining time.
+  // 
+  // For this purpose, three property observers are used to listen on the corresponding \
+  // values of the device. Each time a value has changed, the status bar will be \
+  // updated.
+  note legend Note
+  {
+    attr Bounds = <10,170,740,290>;
+  }
+
+  // Handler to get notifications when 'ReminaingTime' property of the decive has \
+  // changed.
+  $rect <540,0,740,40>
+  object Core::PropertyObserver RemainingTimeObserver
+  {
+    preset OnEvent = onUpdate;
+    preset Outlet = ^Infusion::InfusionModule.RemainingTime;
+  }
+
+  // property of the decive has changed.
+  $rect <540,40,740,80>
+  object Core::PropertyObserver VolumeObserver
+  {
+    preset OnEvent = onUpdate;
+    preset Outlet = ^Infusion::InfusionModule.RemainingVolume;
+  }
+
+  // Handler to get notifications when 'Running' property of the decive has changed.
+  $rect <540,80,740,120>
+  object Core::PropertyObserver RunningObserver
+  {
+    preset OnEvent = onUpdate;
+    preset Outlet = ^Infusion::InfusionModule.Running;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line1
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToTop, ResizeVert];
+    preset Point2 = <520,95>;
+    preset Point1 = <520,0>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line2
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToTop, ResizeVert];
+    preset Point2 = <1,100>;
+    preset Point1 = <1,0>;
+    preset Color = Infusion::BorderColor;
+  }
+}
+
+// This is an enumeration definition for the different unit types used for displaying \
+// values.
+$rect <240,130,440,170>
+$output false
+enum UnitType
+{
+  $rect <10,10,150,50>
+  item Time;
+
+  $rect <160,10,300,50>
+  item Volume;
+
+  $rect <310,10,450,50>
+  item FlowRate;
+}
+
+// Constant to define the size of the diagram.
+$rect <490,290,690,330>
+$output false
+const rect StartButtonPos = <160,230,370,350>;
+
+// Constant to define the size of the diagram.
+$rect <490,335,690,375>
+$output false
+const rect StatusBarPos = <370,250,780,330>;
+
+$rect <40,260,240,300>
+$output false
+class SliderItem : Core::Group
+{
+  $rect <10,210,210,250>
+  inherited property Bounds = <0,0,568,95>;
+
+  $rect <10,120,210,160>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+    /* calculate position of buttons */
+    var int32 x1 = Infusion::MenuItemSize.x * 1 / 5;
+    var int32 x2 = aSize.x - x1;
+    var int32 y = aSize.y / 2;
+
+    /* calculate positions for slider area and lines */
+    var int32 delta = (x2 - x1 ) / 12;
+    var int32 xStart = (( x2 - x1 ) - 12 * delta ) / 2 + delta + x1 + 80;
+    var int32 xEnd = xStart + 10 * delta;
+
+
+
+
+
+    ButtonUp.Bounds = rect( 0, 0, x1, y + 1 );
+    ButtonDown100.Bounds = rect( 0, y, x1, aSize.y );
+    ButtonOk.Bounds = rect( x2, 0, aSize.x, aSize.y );
+
+    ButtonUp10.Bounds = rect( 40, 0, x1+40, y + 1 );
+    ButtonDown10.Bounds = rect( 40, y, x1+40, aSize.y );
+
+    ButtonUp100.Bounds = rect( 80, 0, x1+80, y + 1 );
+    ButtonDown.Bounds = rect( 80, y, x1+80, aSize.y );
+
+
+    /* calculate slider area */
+    SliderArea.Bounds = rect( x1, 0, x2, aSize.y );
+
+    /* draw separator lines */
+    var int32 y1 = 2;
+    var int32 y2 = aSize.y - 2;
+
+    var int32 x = xStart;
+    Line0.Point1 = point( x, y1 );
+    Line0.Point2 = point( x, y2 );
+    x = x + delta;
+    Line1.Point1 = point( x, y1 );
+    Line1.Point2 = point( x, y2 );
+    x = x + delta;
+    Line2.Point1 = point( x, y1 );
+    Line2.Point2 = point( x, y2 );
+    x = x + delta;
+    Line3.Point1 = point( x, y1 );
+    Line3.Point2 = point( x, y2 );
+    x = x + delta;
+    Line4.Point1 = point( x, y1 );
+    Line4.Point2 = point( x, y2 );
+    x = x + delta;
+    Line5.Point1 = point( x, y1 );
+    Line5.Point2 = point( x, y2 );
+    x = x + delta;
+    Line6.Point1 = point( x, y1 );
+    Line6.Point2 = point( x, y2 );
+    x = x + delta;
+    Line7.Point1 = point( x, y1 );
+    Line7.Point2 = point( x, y2 );
+    x = x + delta;
+    Line8.Point1 = point( x, y1 );
+    Line8.Point2 = point( x, y2 );
+    x = x + delta;
+    Line9.Point1 = point( x, y1 );
+    Line9.Point2 = point( x, y2 );
+    x = x + delta;
+    Line10.Point1 = point( x, y1 );
+    Line10.Point2 = point( x, y2 );
+
+
+    Triangle.Point1 = point( xStart, 5 );
+    Triangle.Point2 = point( xEnd-50, 5 );
+    Triangle.Point3 = point( xEnd-50, y );
+    Triangle.Point4 = point( xStart, y );
+
+
+    Line.Point1 = point( xStart - Thumb.Bitmap.FrameSize.x / 2, y );
+    Line.Point2 = point( xEnd + Thumb.Bitmap.FrameSize.x / 2-50, y );
+
+
+
+  }
+
+  $rect <10,160,210,200>
+  inherited method UpdateViewState()
+  {
+    aState;
+
+    var int32 pos = 0;
+
+    /* ensure that the current set value and the given minimum and maximum values are valid */
+    if (( MaxValue > MinValue ) && ( CurrentValue >= MinValue ) && ( CurrentValue <= MaxValue ))
+    {
+      /* calculate the center position of the thumb within the slider area */
+      pos = ( Line.Point2.x - Line.Point1.x - Thumb.Bitmap.FrameSize.x ) * ( CurrentValue - MinValue ) / ( MaxValue - MinValue );
+    }
+
+    /* calculate position of thumb */
+    Thumb.Bounds.origin = point( Line.Point1.x + pos, Line.Point1.y - Thumb.Bounds.h / 2 );
+
+    /* calculate position of touch handler */
+    SimpleTouchHandler.Point1 = point( Thumb.Bounds.x1 - 10, 0 );
+    SimpleTouchHandler.Point2 = point( Thumb.Bounds.x2 + 10, 0 );
+    SimpleTouchHandler.Point3 = point( Thumb.Bounds.x2 + 10, SliderArea.Bounds.y2 );
+    SimpleTouchHandler.Point4 = point( Thumb.Bounds.x1 - 10, SliderArea.Bounds.y2 );
+
+
+
+
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Background
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,568,95>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is a border view.
+  $rect <20,20,160,60>
+  object Views::Border Border
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,568,95>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Button ButtonUp
+  {
+    preset Bounds = <0,0,40,16>;
+    preset OnAction = onIncrement;
+    preset Caption = "+";
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Button ButtonDown100
+  {
+    preset Bounds = <0,47,40,95>;
+    preset OnAction = onDecrement;
+    preset Caption = "-";
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Button ButtonOk
+  {
+    preset Bounds = <495,10,550,90>;
+    preset OnAction = onOk;
+    preset Caption = "OK";
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle SliderArea
+  {
+    preset Bounds = <60,0,500,100>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line0
+  {
+    preset Point2 = <70,90>;
+    preset Point1 = <70,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line1
+  {
+    preset Point2 = <80,90>;
+    preset Point1 = <80,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line2
+  {
+    preset Point2 = <90,90>;
+    preset Point1 = <90,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line3
+  {
+    preset Point2 = <100,90>;
+    preset Point1 = <100,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line4
+  {
+    preset Point2 = <110,90>;
+    preset Point1 = <110,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line5
+  {
+    preset Point2 = <120,90>;
+    preset Point1 = <120,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line6
+  {
+    preset Point2 = <130,90>;
+    preset Point1 = <130,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line7
+  {
+    preset Point2 = <140,90>;
+    preset Point1 = <140,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line8
+  {
+    preset Point2 = <150,90>;
+    preset Point1 = <150,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line9
+  {
+    preset Point2 = <160,90>;
+    preset Point1 = <160,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line10
+  {
+    preset Point2 = <170,90>;
+    preset Point1 = <170,0>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a 2D/3D warp image view.
+  $rect <20,20,160,60>
+  object Views::WarpImage Triangle
+  {
+    preset Point4 = <60,50>;
+    preset Point3 = <510,50>;
+    preset Point2 = <510,10>;
+    preset Point1 = <60,10>;
+    preset Color = Infusion::TextColor;
+    preset Opacity = 0xC0;
+    preset Bitmap = Infusion::Triangle;
+  }
+
+  // This is a line view.
+  $rect <20,20,160,60>
+  object Views::Line Line
+  {
+    preset Point2 = <528,47>;
+    preset Point1 = <40,47>;
+    preset Color = Infusion::TextColor;
+  }
+
+  // This is an image view.
+  $rect <20,20,160,60>
+  object Views::Image Thumb
+  {
+    preset Bounds = <120,29,160,69>;
+    preset AutoSize = true;
+    preset Bitmap = Infusion::Thumb;
+  }
+
+  // The property 'CurrentValue' stores the momentary value of the widget. The value \
+  // is limited automatically to the range from @MinValue to @MaxValue.
+  $rect <210,120,410,160>
+  property int32 CurrentValue = 50;
+
+  $rect <210,160,410,200>
+  onset CurrentValue
+  {
+    /* limit the given value to the range between MinValue and MaxValue */
+    if ( value < MinValue )
+      value = MinValue;
+    if ( value > MaxValue )
+      value = MaxValue;
+
+    /* check if the given value differs from the current value */
+    if ( pure CurrentValue == value )
+      return;
+
+    /* store the new value */
+    pure CurrentValue = value;
+
+    /* ...and finally, force an update */
+    InvalidateViewState();
+  }
+
+  // The property 'MinValue' defines the lower boundary of the widgets value range.
+  $rect <420,120,620,160>
+  property int32 MinValue = 0;
+
+  $rect <420,160,620,200>
+  onset MinValue
+  {
+    /* check if the given value differs from the current value */
+    if ( pure MinValue == value )
+      return;
+
+    /* store the new value */
+    pure MinValue = value;
+
+    /* ...and finally, force an update */
+    InvalidateViewState();
+  }
+
+  // The property 'MaxValue' defines the upper boundary of the widgets value range.
+  $rect <630,120,830,160>
+  property int32 MaxValue = 100;
+
+  $rect <630,160,830,200>
+  onset MaxValue
+  {
+    /* check if the given value differs from the current value */
+    if ( pure MaxValue == value )
+      return;
+
+    /* store the new value */
+    pure MaxValue = value;
+
+    /* ...and finally, force an update */
+    InvalidateViewState();
+  }
+
+  // This is a generic touch handler.
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler SimpleTouchHandler
+  {
+    preset Point4 = <199,97>;
+    preset Point3 = <244,97>;
+    preset Point2 = <244,2>;
+    preset Point1 = <199,2>;
+    preset OnDrag = onDragSlot;
+    preset OnRelease = onReleaseSlot;
+    preset OnPress = onPressSlot;
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,340,410,380>
+  slot onPressSlot
+  {
+    /* The user interaction begins. Force the widget to highlight itself. */
+    InvalidateViewState();
+    startValue = CurrentValue;
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,380,410,420>
+  slot onDragSlot
+  {
+    var int32 oldValue = CurrentValue;
+    var int32 ofs = SimpleTouchHandler.CurrentPos.x - SimpleTouchHandler.HittingPos.x;
+
+    /* ensure that the current set value and the given minimum and maximum values are valid */
+    if (( MaxValue > MinValue ) && ( CurrentValue >= MinValue ) && ( CurrentValue <= MaxValue ))
+    {
+      /* calculate the center position of the thumb within the slider area */
+      ofs = ofs * ( MaxValue - MinValue ) /  ( Line.Point2.x - Line.Point1.x - Thumb.Bitmap.FrameSize.x );
+    }
+    else
+      ofs = 0;
+
+    /* change the value */
+    CurrentValue = startValue + ofs ;
+
+    /* inform others about the changed value */
+
+    if ( CurrentValue != oldValue )
+    {
+     
+      if (  Outlet != null )
+      {
+        Outlet^ = CurrentValue;
+      }
+    }
+
+
+  }
+
+  // This slot method will receive a signal, if the value of the property assigned \
+  // to @Outlet has been changed by another widget or by the application logic. In \
+  // response to this notification, the widget will update itself.
+  $rect <210,300,410,340>
+  slot outletSlot
+  {
+    /* update the current state of the widget */
+    if ( Outlet != null )
+      CurrentValue = Outlet^;
+  }
+
+  $rect <210,250,410,290>
+  onset Outlet
+  {
+    /* check if the new outlet differs from the currently used outlet */
+    if ( pure Outlet == value )
+      return;
+
+    /* detach from the previous outlet */
+    detachobserver outletSlot, pure Outlet;
+
+    /* store the new outlet */
+    pure Outlet = value;
+
+    /* ... and attach to the new one */
+    attachobserver outletSlot, value;
+
+    /* finally, update the current state of the widget by posting a signal to the outlet slot */
+    if ( value != null )
+      postsignal outletSlot;
+  }
+
+  // The property Outlet provides an interface for the Controller-View model. In \
+  // the Controller-View model, the widgets (views) and the application logic (controllers) \
+  // are always kept apart. An automatism behind this model ensures, that widgets \
+  // are notified automatically as soon as the affected controller has changed its \
+  // state. On the other hand, user interactions on a widget cause the affected controller \
+  // to execute the application logic. Usually, a controller is a simple Chora object \
+  // containg several properties and the implementation of onget/onset method.
+  // By assigning a property reference, Outlet establishes a connection between the \
+  // widget and the controller object, the affected property belongs to. After this, \
+  // the widget is able to read and modify the referred property in response to the \
+  // user interactions. It is also able to adapt the widget appearance, if the value \
+  // of the referred property has been modified by another widget or by the application \
+  // logic itself.
+  $rect <210,210,410,250>
+  property ^int32 Outlet = null;
+
+  // The property 'OnChange' can refer to a slot method, which will receive a signal \
+  // each time the user has changed the value of the slider. Thereupon the method's \
+  // logic will be executed.
+  $rect <630,300,830,340>
+  property slot OnClose = null;
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,420,410,460>
+  slot onReleaseSlot
+  {
+    /* The user interaction terminates. Force the widget to de-highlight itself. */
+    InvalidateViewState();
+
+
+  }
+
+  // This variable stores the Value at the beginning of the user interaction.
+  $rect <420,420,620,460>
+  var int32 startValue = 0;
+
+  // Slot method for the PlusButton.
+  $rect <420,210,620,250>
+  slot onIncrement
+  {
+    sender; /* the method is called from the sender object */
+
+      if( (int32)( CurrentValue + 1 ) <=( int32 )MaxValue )
+          CurrentValue = CurrentValue + 1;
+
+
+      /* update the attached outlet, if there is one... */
+      if (  Outlet != null )
+        Outlet^ = CurrentValue;
+
+  }
+
+  // Slot method for the MinusButton.
+  $rect <420,250,620,290>
+  slot onDecrement
+  {
+    sender; /* the method is called from the sender object */
+    if( (int32)( CurrentValue - 1 ) >= ( int32 )MinValue )
+    CurrentValue = ( CurrentValue - 1 ); 
+
+      /* update the attached outlet, if there is one... */
+      if (  Outlet != null )
+        Outlet^ = CurrentValue;
+
+  }
+
+  // Slot method for the OkButton.
+  $rect <420,300,620,340>
+  slot onOk
+  {
+    sender; /* the method is called from the sender object */
+
+      if (  Outlet != null )
+        Outlet^ = CurrentValue;  
+         
+    postsignal OnClose;
+  }
+
+  // The class 'SliderItem' implements a horizontal slider widget, that is used to \
+  // change a value by moving a thumb. Additionally, the value can be changed by \
+  // pressing the '+' or  '-' buttons.
+  // 
+  // The property 'CurrentValue' represents the momentary value of the widget and \
+  // corresponds to the position of the thumb. The supported value range of the slider \
+  // can be defined by setting the properties 'MinValue' and 'MaxValue'.
+  // A slider can be connected with an Int32 'Outlet' property to show the current \
+  // value of the property and to change it by moving the thumb. 
+  // 
+  // The widget will trigger the slot method 'OnClose' as soon as the user has pressed \
+  // the 'OK' button.
+  note legend Note
+  {
+    attr Bounds = <10,502,830,682>;
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Button ButtonUp10
+  {
+    preset Bounds = <40,0,84,33>;
+    preset OnAction = onIncrement10;
+    preset Caption = "+";
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Button ButtonDown10
+  {
+    preset Bounds = <40,65,84,95>;
+    preset OnAction = onDecrement10;
+    preset Caption = "-";
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Button ButtonDown
+  {
+    preset Bounds = <85,80,124,95>;
+    preset OnAction = onDecrement100;
+    preset Caption = "-";
+  }
+
+  $rect <20,20,160,60>
+  object Infusion::Button ButtonUp100
+  {
+    preset Bounds = <85,0,124,40>;
+    preset OnAction = onIncrement100;
+    preset Caption = "+";
+  }
+
+  // Slot method for the PlusButton.
+  $rect <640,210,840,250>
+  slot onIncrement10
+  {
+    sender; /* the method is called from the sender object */
+
+    if(  ( CurrentValue + 10 ) <= MaxValue ) 
+    {
+
+      if( Infusion::UnitType.Time != Unit )
+      {
+        if( CurrentValue % 10 == 0 )
+        {
+           CurrentValue = CurrentValue + 10;
+        }
+        else
+        {
+             CurrentValue = ( ( CurrentValue/10 ) * 10 ) + 10;
+        }
+      }
+      else
+      {
+        if(  ( CurrentValue + 60 ) <= MaxValue ) {
+        if( CurrentValue % 60 == 0 )
+        {
+           CurrentValue = CurrentValue + 60;
+        }
+        else
+        {
+             CurrentValue = ( ( CurrentValue/60 ) * 60 ) + 60;
+        }
+        }
+      }
+
+      }
+      /* update the attached outlet, if there is one... */
+      if (  Outlet != null )
+        Outlet^ = CurrentValue;
+
+  }
+
+  // Slot method for the PlusButton.
+  $rect <640,250,840,290>
+  slot onIncrement100
+  {
+    sender; /* the method is called from the sender object */
+    if(  ( CurrentValue + 10 ) <= MaxValue ) 
+    {
+
+      if( Infusion::UnitType.Time != Unit )
+      {
+        if( CurrentValue % 100 == 0 )
+        {
+           CurrentValue = CurrentValue + 100;
+        }
+        else
+        {
+             CurrentValue = ( ( CurrentValue/100 ) * 100 ) + 100;
+        }
+      }
+      else
+      {
+        if(  ( CurrentValue + 3600 ) <= MaxValue ) 
+        {
+        if( CurrentValue % 3600 == 0 )
+        {
+           CurrentValue = CurrentValue + 3600;
+        }
+        else
+        {
+             CurrentValue = ( ( CurrentValue/3600 ) * 3600 ) + 3600;
+        }
+        }
+      }
+
+      }
+
+      /* update the attached outlet, if there is one... */
+      if (  Outlet != null )
+        Outlet^ = CurrentValue;
+
+  }
+
+  // Slot method for the MinusButton.
+  $rect <630,360,830,400>
+  slot onDecrement10
+  {
+    sender; /* the method is called from the sender object */
+    if(  ( CurrentValue - 10 ) > MinValue ) 
+    {
+
+      if( Infusion::UnitType.Time != Unit )
+      {
+      
+        if( CurrentValue % 10 == 0 )
+        {
+           CurrentValue = CurrentValue - 10;
+        }
+        else
+        {
+             CurrentValue = ( ( CurrentValue/10 ) * 10 );
+        }
+      }
+      else
+      {
+        if(  ( CurrentValue - 60 ) > MinValue ) 
+        if( CurrentValue % 60 == 0 )
+        {
+           CurrentValue = CurrentValue - 60;
+        }
+        else
+        {
+             CurrentValue = ( ( CurrentValue/60 ) * 60 ) ;
+        }
+      }
+
+      }
+      /* update the attached outlet, if there is one... */
+      if (  Outlet != null )
+        Outlet^ = CurrentValue;
+
+  }
+
+  // Slot method for the MinusButton.
+  $rect <640,410,840,450>
+  slot onDecrement100
+  {
+    sender; /* the method is called from the sender object */
+
+    if( Infusion::UnitType.Time == Unit )
+    {
+    	if( ( CurrentValue - 3600 ) >= MinValue )
+    	{
+    		if( CurrentValue % 3600 == 0 )
+    		{
+    		   CurrentValue = CurrentValue - 3600;
+    		}
+    		else
+    		{
+    			 CurrentValue = ( CurrentValue/3600 * 3600 ) ;
+    		}
+        }
+    } else if( ( CurrentValue - 100 ) >= MinValue )
+    	{
+    		if( CurrentValue % 100 == 0 )
+    		{
+    		   CurrentValue = CurrentValue - 100;
+    		}
+    		else
+    		{
+    			 CurrentValue = ( CurrentValue/100 * 100 ) ;
+    		}
+      }
+      /* update the attached outlet, if there is one... */
+      if (  Outlet != null )
+        Outlet^ = CurrentValue;
+
+  }
+
+  // This is a 2D/3D warp image view.
+  $rect <20,20,160,60>
+  object Views::WarpImage TriangleInc
+  {
+    preset Point4 = <0,135>;
+    preset Point3 = <120,135>;
+    preset Point2 = <120,47>;
+    preset Point1 = <0,47>;
+    preset Color = Infusion::TextColor;
+    preset Opacity = 0xC0;
+    preset Bitmap = Infusion::Triangle;
+  }
+
+  $rect <640,0,840,40>
+  property Infusion::UnitType Unit = Infusion::UnitType.FlowRate;
+
+  $rect <640,40,840,80>
+  onset Unit
+  {
+    // The value doesn't change - nothing to do.
+    if ( pure Unit == value )
+      return;
+
+    // Remember the property's new value.
+    pure Unit = value;
+
+    /* ...and finally, force an update */
+    InvalidateViewState();
+
+    // TO DO:
+    // 
+    // Now you can handle the alternation of the property.
+  }
+}
+
+// Constant to define the size of the slider item
+$rect <490,375,690,415>
+$output false
+const point SliderSize = <620,205>;
+
+// Button widget used within the slider item.
+$rect <240,260,440,300>
+$output false
+class Button : Core::Group
+{
+  $rect <10,120,210,160>
+  inherited property Bounds = <0,0,50,40>;
+
+  $rect <10,80,210,120>
+  inherited method UpdateViewState()
+  {
+    aState;
+
+    /* colorize background if currently selected */
+    if ( TouchHandler.Down && TouchHandler.Inside )
+      Background.Color = Infusion::BorderColor;
+    else 
+      Background.Color = Infusion::BackColor;
+
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Background
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,50,40>;
+    preset Color = Infusion::SelectColor;
+  }
+
+  // This is a border view.
+  $rect <20,20,160,60>
+  object Views::Border Border
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,50,40>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // This is an ordinary text view.
+  $rect <20,20,160,60>
+  object Views::Text Text
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,50,40>;
+    preset Alignment = Views::TextAlignment[AlignHorzCenter, AlignVertCenter];
+    preset String = "+";
+    preset Font = Infusion::MediumFont;
+    preset Color = Infusion::TextColor;
+  }
+
+  $rect <20,20,160,60>
+  object Core::SimpleTouchHandler TouchHandler
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Point4 = <0,40>;
+    preset Point3 = <50,40>;
+    preset Point2 = <50,0>;
+    preset Point1 = <0,0>;
+    preset OnLeave = enterLeaveSlot;
+    preset OnEnter = enterLeaveSlot;
+    preset OnHold = null;
+    preset OnRelease = pressReleaseSlot;
+    preset OnPress = OnPressSlot;
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <210,80,410,120>
+  slot enterLeaveSlot
+  {
+    InvalidateViewState();
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <211,120,411,160>
+  slot pressReleaseSlot
+  {
+    /* releasing the finger outside the button area is ignored */
+    if ( TouchHandler.Inside )
+    {
+      HoldTimer.Enabled = false;
+      /* inform the OnChange slot method */
+     // signal OnAction;
+    }
+  }
+
+  // The property 'OnAction' can refer to a slot method, which will receive a signal \
+  // as soon the user has pressed the button. Thereupon the method's logic will be \
+  // executed.
+  $rect <410,120,610,160>
+  property slot OnAction = null;
+
+  // This property 'Caption' contains the title of the button.
+  $rect <210,0,410,40>
+  property string Caption = "";
+
+  $rect <210,40,410,80>
+  onset Caption
+  {
+    /* store the given value */
+    pure Caption = value;
+
+    /* forward the new caption */
+    Text.String = value;
+  }
+
+  // The class 'Button' implements a simple push button to trigger a certain action.
+  // The button contains a text item that can be set with the property 'Caption'.
+  // Each time the user has pressed the button a signal is sent to the slot method \
+  // 'OnAction'.
+  note legend Note
+  {
+    attr Bounds = <10,180,610,260>;
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <420,70,620,110>
+  slot OnHold
+  {
+    /* Finger Pressed outside the button area is ignored */
+    if ( TouchHandler.Down && TouchHandler.Inside )
+    {
+      /* inform the OnChange slot method */
+      signal OnAction;
+    }
+  }
+
+  $rect <426,20,626,60>
+  object Core::Timer HoldTimer
+  {
+    preset OnTrigger = OnHold;
+    preset Period = 500;
+  }
+
+  // This internal slot method is used to receive the corresponding signals form \
+  // the touch handler.
+  $rect <630,120,830,160>
+  slot OnPressSlot
+  {
+    /* releasing the finger outside the button area is ignored */
+    if ( TouchHandler.Down && TouchHandler.Inside )
+    {
+      /* inform the OnChange slot method */
+      HoldTimer.Enabled = true;
+      signal OnAction;
+    }
+  }
+}
+
+// This is a bitmap resource.
+$rect <690,655,890,695>
+$output false
+resource Resources::Bitmap Triangle
+{
+  attr bitmapfile FileName = .\Res\Triangle.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Alpha8;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// This is a bitmap resource.
+$rect <690,695,890,735>
+$output false
+resource Resources::Bitmap Thumb
+{
+  attr bitmapfile FileName = .\Res\Thumb.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Native;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// Infusion Pump main screen, 
+// widgets and diagram classes
+note group Note
+{
+  attr Bounds = <20,10,460,410>;
+}
+
+// Layout and color constants
+note group Note1
+{
+  attr Bounds = <470,10,910,430>;
+}
+
+// Resources
+note group Note2
+{
+  attr Bounds = <470,445,910,755>;
+}
+
+// Device class
+note group Note3
+{
+  attr Bounds = <20,414,460,594>;
+}
+
+// The Application 'ClimateCabinet' implements the user interface of a Infusion Pump. 
+// 
+// This demo application is implemented for a screen size of 960x360 pixel.
+note legend Note4
+{
+  attr Bounds = <20,598,460,828>;
+}
+
+// This is a bitmap resource.
+$rect <490,615,690,655>
+$output false
+resource Resources::Bitmap Battery
+{
+  attr bitmapfile FileName = .\Res\Battery.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Native;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// This is a bitmap resource.
+$rect <490,655,690,695>
+$output false
+resource Resources::Bitmap Home
+{
+  attr bitmapfile FileName = .\Res\Home.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Native;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+// This is a bitmap resource.
+$rect <490,695,690,735>
+$output false
+resource Resources::Bitmap Settings
+{
+  attr bitmapfile FileName = .\Res\Settings.png;
+  attr framesize FrameSize;
+  attr framedelay FrameDelay;
+  attr bitmapformat Format = Native;
+  attr bitmapdithering Dithering = Auto;
+  attr bitmapmode Mode = Default;
+}
+
+$rect <40,304,240,344>
+$output false
+class BootScreen : Core::Group
+{
+  $rect <10,600,210,640>
+  inherited property Bounds = <0,0,960,360>;
+
+  $rect <10,510,210,550>
+  inherited method UpdateLayout()
+  {
+    super( aSize );
+
+
+
+
+  }
+
+  $rect <10,550,210,590>
+  inherited method UpdateViewState()
+  {
+    aState;
+
+
+
+
+
+
+  }
+
+  // This is a filled rectangle view.
+  $rect <20,20,160,60>
+  object Views::Rectangle Background
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,960,360>;
+    preset Color = Infusion::BackColor;
+  }
+
+  // This is a border view.
+  $rect <20,20,160,60>
+  object Views::Border Border
+  {
+    preset Layout = Core::Layout[AlignToBottom, AlignToLeft, AlignToRight, AlignToTop, ResizeHorz, ResizeVert];
+    preset Bounds = <0,0,960,360>;
+    preset Color = Infusion::BorderColor;
+  }
+
+  // The property 'CurrentValue' stores the momentary value of the widget. The value \
+  // is limited automatically to the range from @MinValue to @MaxValue.
+  $rect <210,510,410,550>
+  property string PumpOwner = " ";
+
+  $rect <210,550,410,590>
+  onset PumpOwner
+  {
+    /* limit the given value to the range between MinValue and MaxValue */
+    if ( value < DrugLibraryName )
+      value = DrugLibraryName;
+    if ( value > DrugLibraryDate )
+      value = DrugLibraryDate;
+
+    /* check if the given value differs from the current value */
+    if ( pure PumpOwner == value )
+      return;
+
+    /* store the new value */
+    pure PumpOwner = value;
+
+    /* ...and finally, force an update */
+    InvalidateViewState();
+  }
+
+  // The property 'MinValue' defines the lower boundary of the widgets value range.
+  $rect <420,510,620,550>
+  property string DrugLibraryName = 0;
+
+  $rect <420,550,620,590>
+  onset DrugLibraryName
+  {
+    /* check if the given value differs from the current value */
+    if ( pure DrugLibraryName == value )
+      return;
+
+    /* store the new value */
+    pure DrugLibraryName = value;
+
+    /* ...and finally, force an update */
+    InvalidateViewState();
+  }
+
+  // The property 'MaxValue' defines the upper boundary of the widgets value range.
+  $rect <630,510,830,550>
+  property string DrugLibraryDate = 100;
+
+  // The property 'OnChange' can refer to a slot method, which will receive a signal \
+  // each time the user has changed the value of the slider. Thereupon the method's \
+  // logic will be executed.
+  $rect <630,690,830,730>
+  property slot OnClose = null;
+
+  // This variable stores the Value at the beginning of the user interaction.
+  $rect <210,600,410,640>
+  var string SwVersion = 0;
+
+  // The class 'SliderItem' implements a horizontal slider widget, that is used to \
+  // change a value by moving a thumb. Additionally, the value can be changed by \
+  // pressing the '+' or  '-' buttons.
+  // 
+  // The property 'CurrentValue' represents the momentary value of the widget and \
+  // corresponds to the position of the thumb. The supported value range of the slider \
+  // can be defined by setting the properties 'MinValue' and 'MaxValue'.
+  // A slider can be connected with an Int32 'Outlet' property to show the current \
+  // value of the property and to change it by moving the thumb. 
+  // 
+  // The widget will trigger the slot method 'OnClose' as soon as the user has pressed \
+  // the 'OK' button.
+  note legend Note
+  {
+    attr Bounds = <10,860,830,1040>;
+  }
+
+  // This variable stores the Value at the beginning of the user interaction.
+  $rect <420,600,620,640>
+  var string NextSafetyCheck = 0;
+
+  // This variable stores the Value at the beginning of the user interaction.
+  $rect <630,600,830,640>
+  var string SerialNumber = 0;
+
+  // Directives to adapt the order of the above members according to how these members 
+  // where arranged when the project content was stored. In this manner the storage 
+  // and the expected order of the members don't depend. Merging of changes in the 
+  // project files is simplified.
+  $member Bounds
+  $member UpdateLayout
+  $member UpdateViewState
+  $member Border
+  $member Background
+  $member PumpOwner
+  $member OnSetPumpOwner
+  $member DrugLibraryName
+  $member OnSetDrugLibraryName
+  $member DrugLibraryDate
+  $member OnClose
+  $member SwVersion
+  $member Note
+  $member NextSafetyCheck
+  $member SerialNumber
+
+  // Directives to adapt the order of members belonging to this class so they appear 
+  // correctly arranged relative to the members inherited from the ancestor (super) 
+  // classes. The numbers indicate the order-displacement to apply on the respective 
+  // member once all members have been loaded and combined with members from the 
+  // ancestor classes.
+  $reorder Border 2
+}
+
+// Constant to define the size of the diagram.
+$rect <688,334,888,374>
+$output false
+const rect BootScreenPos = <0,0,960,360>;
